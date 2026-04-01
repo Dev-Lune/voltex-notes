@@ -5,7 +5,8 @@ import {
   FileText, Search, Share2, Plus, Settings, X, Menu,
   ChevronLeft, Cloud, CloudOff, RefreshCw, Pencil,
   CalendarDays, LayoutGrid, Home, MoreVertical, Star,
-  Trash2, Edit3, Copy, FolderOpen, ArrowLeft, ChevronRight
+  Trash2, Edit3, Copy, FolderOpen, ArrowLeft, ChevronRight,
+  PanelRight,
 } from "lucide-react";
 import { AppState, NoteType, Note } from "./data";
 
@@ -181,9 +182,11 @@ export function MobileHeader({
 
 // ─── Mobile Bottom Navigation ─────────────────────────────────────────────────
 
+type MobileView = "home" | "search" | "graph" | "new" | "settings" | "panel";
+
 interface MobileBottomNavProps {
-  activeView: "home" | "search" | "graph" | "new" | "settings";
-  onNavigate: (view: "home" | "search" | "graph" | "new" | "settings") => void;
+  activeView: MobileView;
+  onNavigate: (view: MobileView) => void;
   onNewNoteMenu: () => void;
 }
 
@@ -192,7 +195,7 @@ export function MobileBottomNav({ activeView, onNavigate, onNewNoteMenu }: Mobil
     { id: "home" as const, icon: Home, label: "Notes" },
     { id: "search" as const, icon: Search, label: "Search" },
     { id: "new" as const, icon: Plus, label: "New", special: true },
-    { id: "graph" as const, icon: Share2, label: "Graph" },
+    { id: "panel" as const, icon: PanelRight, label: "Panel" },
     { id: "settings" as const, icon: Settings, label: "Settings" },
   ];
 
@@ -245,9 +248,10 @@ interface MobileDrawerProps {
   onClose: () => void;
   children: React.ReactNode;
   title?: string;
+  side?: "left" | "right";
 }
 
-export function MobileDrawer({ isOpen, onClose, children, title }: MobileDrawerProps) {
+export function MobileDrawer({ isOpen, onClose, children, title, side = "left" }: MobileDrawerProps) {
   const drawerRef = useRef<HTMLDivElement>(null);
   const startX = useRef(0);
   const currentX = useRef(0);
@@ -280,14 +284,21 @@ export function MobileDrawer({ isOpen, onClose, children, title }: MobileDrawerP
 
     const onTouchMove = (e: TouchEvent) => {
       currentX.current = e.touches[0].clientX;
-      const diff = startX.current - currentX.current;
+      const diff = side === "left"
+        ? startX.current - currentX.current
+        : currentX.current - startX.current;
       if (diff > 0) {
-        el.style.transform = `translateX(-${Math.min(diff, el.offsetWidth)}px)`;
+        const translate = side === "left"
+          ? `translateX(-${Math.min(diff, el.offsetWidth)}px)`
+          : `translateX(${Math.min(diff, el.offsetWidth)}px)`;
+        el.style.transform = translate;
       }
     };
 
     const onTouchEnd = () => {
-      const diff = startX.current - currentX.current;
+      const diff = side === "left"
+        ? startX.current - currentX.current
+        : currentX.current - startX.current;
       if (diff > 100) {
         onClose();
       }
@@ -303,7 +314,15 @@ export function MobileDrawer({ isOpen, onClose, children, title }: MobileDrawerP
       el.removeEventListener("touchmove", onTouchMove);
       el.removeEventListener("touchend", onTouchEnd);
     };
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, side]);
+
+  const positionClass = side === "left"
+    ? "left-0"
+    : "right-0";
+  const closedTransform = side === "left"
+    ? "translateX(-100%)"
+    : "translateX(100%)";
+  const openTransform = "translateX(0)";
 
   return (
     <>
@@ -322,10 +341,11 @@ export function MobileDrawer({ isOpen, onClose, children, title }: MobileDrawerP
       {/* Drawer */}
       <div
         ref={drawerRef}
-        className={`fixed top-0 left-0 bottom-0 z-50 w-[85%] max-w-[320px] mobile-drawer ${isOpen ? "mobile-drawer-open" : "mobile-drawer-closed"}`}
+        className={`fixed top-0 ${positionClass} bottom-0 z-50 w-[85%] max-w-[320px] mobile-drawer`}
         style={{
           background: "var(--color-obsidian-surface)",
-          boxShadow: isOpen ? "4px 0 24px rgba(0,0,0,0.4)" : "none",
+          boxShadow: isOpen ? (side === "left" ? "4px 0 24px rgba(0,0,0,0.4)" : "-4px 0 24px rgba(0,0,0,0.4)") : "none",
+          transform: isOpen ? openTransform : closedTransform,
         }}
         role="dialog"
         aria-modal="true"

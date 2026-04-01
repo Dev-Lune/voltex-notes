@@ -92,8 +92,9 @@ export default function ObsidianApp() {
   const isSmallDesktop = useSmallDesktop();
   const viewportWidth = useViewportWidth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
-  const [mobileView, setMobileView] = useState<"home" | "search" | "graph" | "new" | "settings">("home");
+  const [mobileView, setMobileView] = useState<"home" | "search" | "graph" | "new" | "settings" | "panel">("home");
   const [mobileNewNoteMenuOpen, setMobileNewNoteMenuOpen] = useState(false);
+  const [mobileRightPanelOpen, setMobileRightPanelOpen] = useState(false);
 
   // Welcome / workspace setup state
   const [welcomeModalOpen, setWelcomeModalOpen] = useState(false);
@@ -716,6 +717,10 @@ export default function ObsidianApp() {
       }
       return { ...prev, ...next };
     });
+    // Open mobile right panel drawer for panel plugins
+    if (isMobile && ["heatmap-calendar", "spaced-repetition", "mind-map"].includes(id)) {
+      setMobileRightPanelOpen(true);
+    }
     // Show toast notification
     const hint = PLUGIN_HINTS[id];
     if (hint) {
@@ -767,7 +772,7 @@ export default function ObsidianApp() {
   }, [state.enabledSnippetIds]);
 
   // Mobile navigation handler
-  const handleMobileNavigate = useCallback((view: "home" | "search" | "graph" | "new" | "settings") => {
+  const handleMobileNavigate = useCallback((view: "home" | "search" | "graph" | "new" | "settings" | "panel") => {
     setMobileView(view);
     if (view === "home") {
       patch({ mainView: "editor", sidebarView: "files" });
@@ -778,6 +783,8 @@ export default function ObsidianApp() {
       patch({ mainView: "graph" });
     } else if (view === "settings") {
       patch({ settingsOpen: true });
+    } else if (view === "panel") {
+      setMobileRightPanelOpen(true);
     }
   }, [patch]);
 
@@ -1048,6 +1055,49 @@ export default function ObsidianApp() {
           onTogglePin={togglePinNote}
         />
       </MobileDrawer>
+
+      {/* Mobile Right Panel Drawer */}
+      {isMobile && (
+        <MobileDrawer
+          isOpen={mobileRightPanelOpen}
+          onClose={() => setMobileRightPanelOpen(false)}
+          title="Panel"
+          side="right"
+        >
+          <RightPanel
+            state={state}
+            onStateChange={patch}
+            onNoteClick={(id) => { openNote(id); setMobileRightPanelOpen(false); }}
+            onRestoreVersion={restoreNoteVersion}
+            onNewDailyNote={(date) => {
+              const id = `note-${Date.now()}`;
+              const dateStr = date.toISOString().split("T")[0];
+              const title = date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+              const newNote: Note = {
+                id,
+                title,
+                content: `# ${title}\n\n## Morning Intentions\n\n## Notes\n\n## Reflection\n`,
+                tags: ["daily"],
+                folder: "daily",
+                createdAt: dateStr,
+                updatedAt: dateStr,
+                starred: false,
+                wordCount: 0,
+                type: "daily",
+              };
+              setState((prev) => ({
+                ...prev,
+                notes: [...prev.notes, newNote],
+                activeNoteId: id,
+                openNoteIds: [...prev.openNoteIds, id],
+                mainView: "editor",
+              }));
+              pushNoteToFirestore(newNote);
+              setMobileRightPanelOpen(false);
+            }}
+          />
+        </MobileDrawer>
+      )}
 
       {/* Mobile Bottom Navigation */}
       <MobileBottomNav

@@ -1441,18 +1441,23 @@ export default function SettingsModal({
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-3xl mx-4 rounded-2xl overflow-hidden flex flex-col md:flex-row"
+        className="settings-modal-container relative w-full md:max-w-3xl md:mx-4 md:rounded-2xl overflow-hidden flex flex-col md:flex-row"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
           boxShadow: "0 32px 64px rgba(0,0,0,0.6)",
-          maxHeight: "min(95dvh, 640px)",
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <style>{`
+          .settings-modal-container { height: 100dvh; max-height: 100dvh; border-radius: 0; }
+          @media (min-width: 768px) {
+            .settings-modal-container { height: auto; max-height: min(95dvh, 640px); border-radius: 1rem; }
+          }
+        `}</style>
         {/* Sidebar */}
         <div
-          className="settings-tab-sidebar md:w-48 w-full flex md:flex-col flex-row md:py-4 py-2 shrink-0 overflow-x-auto md:overflow-x-visible"
+          className="settings-tab-sidebar md:w-48 w-full flex md:flex-col flex-row md:py-4 py-0 shrink-0 overflow-x-auto md:overflow-x-visible"
           style={{ borderRight: undefined, background: "var(--color-obsidian-bg)" }}
         >
           <style>{`
@@ -1474,14 +1479,15 @@ export default function SettingsModal({
             <button
               key={id}
               onClick={() => setActiveTab(id)}
-              className="flex items-center gap-2 md:gap-2.5 px-3 md:px-4 py-2 text-xs md:text-sm transition-colors text-left whitespace-nowrap shrink-0"
+              className="flex items-center gap-1.5 md:gap-2.5 px-3 md:px-4 py-2.5 md:py-2 text-xs md:text-sm transition-colors text-left whitespace-nowrap shrink-0 flex-col md:flex-row"
               style={{
                 color: activeTab === id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)",
                 background: activeTab === id ? "rgba(124,106,247,0.12)" : "transparent",
+                borderBottom: activeTab === id ? "2px solid var(--color-obsidian-accent)" : "2px solid transparent",
               }}
             >
-              <Icon size={14} />
-              {label}
+              <Icon size={16} />
+              <span className="text-[10px] md:text-sm">{label}</span>
             </button>
           ))}
         </div>
@@ -1489,7 +1495,7 @@ export default function SettingsModal({
         {/* Content */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <div
-            className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 shrink-0"
+            className="flex items-center justify-between px-4 md:px-6 py-3 md:py-4 shrink-0 safe-top"
             style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
           >
             <h2 className="text-sm md:text-base font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
@@ -1504,7 +1510,7 @@ export default function SettingsModal({
             </button>
           </div>
 
-          <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5">
+          <div className="flex-1 overflow-y-auto px-4 md:px-6 py-4 md:py-5 pb-8 md:pb-5">
             {activeTab === "general" && (
               <GeneralTab
                 preferences={state.preferences}
