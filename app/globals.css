@@ -113,7 +113,10 @@
    ══════════════════════════════════════════════════════════════════════════════ */
 @layer base {
   * {
-    @apply border-border outline-ring/50;
+    @apply border-border;
+  }
+  textarea, input {
+    outline: none;
   }
   html, body {
     height: 100%;
@@ -188,6 +191,78 @@
   .tap-target {
     min-height: 48px;
     min-width: 48px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Mobile Editor & Toolbar Overrides (< 768px)
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  /* Editor content area — reduce padding for mobile */
+  .editor-content-area {
+    padding: 16px 16px 80px !important;
+  }
+
+  .editor-content-area input.editor-title {
+    font-size: 1.5rem !important;
+  }
+
+  /* Toolbar — scrollable, bigger touch targets */
+  .editor-toolbar-row {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    padding: 6px 8px !important;
+    gap: 2px !important;
+  }
+  .editor-toolbar-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .editor-toolbar-row button {
+    min-width: 40px;
+    min-height: 40px;
+    flex-shrink: 0;
+  }
+
+  .editor-toolbar-row {
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Preview pane — tighter padding */
+  .preview-content-area {
+    padding: 16px !important;
+  }
+
+  /* Empty state — hide keyboard shortcuts on mobile */
+  .empty-state-shortcuts {
+    display: none !important;
+  }
+
+  /* Table editor dialog — full width on mobile */
+  .table-editor-dialog {
+    max-width: calc(100vw - 16px) !important;
+    margin: 8px !important;
+    max-height: calc(100dvh - 16px) !important;
+    overflow-y: auto;
+  }
+
+  .table-editor-dialog input {
+    min-width: 60px;
+    font-size: 14px !important;
+    padding: 8px !important;
+  }
+
+  /* User info panel — centered on mobile */
+  .user-info-backdrop {
+    align-items: center !important;
+    justify-content: center !important;
+    padding: 16px !important;
+  }
+
+  .user-info-panel {
+    width: calc(100vw - 32px) !important;
+    max-width: 360px !important;
   }
 }
 
@@ -634,18 +709,17 @@
 /* ══════════════════════════════════════════════════════════════════════════════
    Focus states for accessibility
    ══════════════════════════════════════════════════════════════════════════════ */
-:focus-visible {
+button:focus-visible,
+a:focus-visible,
+[tabindex]:focus-visible {
   outline: 2px solid var(--obs-accent);
   outline-offset: 2px;
 }
 
-button:focus-visible,
-a:focus-visible,
+/* No focus ring on editor text inputs — the caret is sufficient */
 input:focus-visible,
-textarea:focus-visible,
-[tabindex]:focus-visible {
-  outline: 2px solid var(--obs-accent);
-  outline-offset: 2px;
+textarea:focus-visible {
+  outline: none;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════

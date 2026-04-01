@@ -14,6 +14,7 @@ interface MarkdownRendererProps {
   onWikilinkClick?: (title: string) => void;
   onHoverLink?: (title: string, rect: DOMRect) => void;
   onHoverEnd?: () => void;
+  onToggleCheckbox?: (lineIndex: number) => void;
   className?: string;
 }
 
@@ -896,6 +897,7 @@ export default function MarkdownRenderer({
   onWikilinkClick,
   onHoverLink,
   onHoverEnd,
+  onToggleCheckbox,
   className = "",
 }: MarkdownRendererProps) {
   const lines = content.split("\n");
@@ -1222,6 +1224,7 @@ export default function MarkdownRenderer({
         const isTask = text.startsWith("[ ] ") || text.startsWith("[x] ");
         const checked = text.startsWith("[x] ");
         const itemText = isTask ? text.slice(4) : text;
+        const lineIdx = i;
         listItems.push(
           <li
             key={i}
@@ -1234,21 +1237,36 @@ export default function MarkdownRenderer({
           >
             {isTask && (
               <span
+                onClick={() => onToggleCheckbox?.(lineIdx)}
+                role="checkbox"
+                aria-checked={checked}
+                tabIndex={0}
+                onKeyDown={(e) => { if (e.key === " " || e.key === "Enter") { e.preventDefault(); onToggleCheckbox?.(lineIdx); } }}
                 style={{
                   display: "inline-block",
-                  width: 14,
-                  height: 14,
+                  width: 16,
+                  height: 16,
                   border: "1.5px solid var(--color-obsidian-accent)",
-                  borderRadius: "3px",
-                  marginRight: "6px",
+                  borderRadius: "4px",
+                  marginRight: "8px",
                   verticalAlign: "middle",
                   background: checked ? "var(--color-obsidian-accent)" : "transparent",
                   position: "relative",
                   top: -1,
+                  cursor: onToggleCheckbox ? "pointer" : "default",
+                  transition: "background 0.15s ease",
                 }}
-              />
+              >
+                {checked && (
+                  <svg width="12" height="12" viewBox="0 0 12 12" style={{ position: "absolute", top: 0.5, left: 0.5 }}>
+                    <path d="M2.5 6l2.5 2.5 4.5-5" stroke="#fff" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                )}
+              </span>
             )}
-            {parseInline(itemText, onWikilinkClick, onHoverLink, onHoverEnd, notes)}
+            <span style={{ textDecoration: checked ? "line-through" : "none", opacity: checked ? 0.6 : 1 }}>
+              {parseInline(itemText, onWikilinkClick, onHoverLink, onHoverEnd, notes)}
+            </span>
           </li>
         );
         i++;

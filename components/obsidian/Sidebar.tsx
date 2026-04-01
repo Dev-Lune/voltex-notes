@@ -76,6 +76,15 @@ function NewNoteMenu({
 
   const filtered = types.filter(({ pluginId }) => !pluginId || installedPluginIds.includes(pluginId));
 
+  // Clamp position so the menu stays within the viewport
+  const menuWidth = 224; // w-56 = 14rem = 224px
+  const viewportW = typeof window !== "undefined" ? window.innerWidth : 400;
+  const viewportH = typeof window !== "undefined" ? window.innerHeight : 800;
+  const rawLeft = anchorRect ? anchorRect.left + 8 : 16;
+  const rawTop = anchorRect ? anchorRect.bottom + 4 : 48;
+  const clampedLeft = Math.min(rawLeft, viewportW - menuWidth - 8);
+  const clampedTop = Math.min(rawTop, viewportH - 250);
+
   return (
     <>
       <div className="fixed inset-0 z-[9998]" onClick={onClose} />
@@ -84,8 +93,8 @@ function NewNoteMenu({
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
-          left: anchorRect ? anchorRect.left + 8 : 310,
-          top: anchorRect ? anchorRect.bottom + 4 : 48,
+          left: Math.max(8, clampedLeft),
+          top: Math.max(8, clampedTop),
         }}
       >
         <div
@@ -237,7 +246,7 @@ function FileTreeItem({
   return (
     <div
       data-file-item
-      className="group relative flex items-center gap-2 px-3 py-1 rounded-md cursor-pointer text-sm transition-colors"
+      className="group relative flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-md cursor-pointer text-sm transition-colors"
       style={{
         background: isSelected ? "rgba(243,139,168,0.15)" : isActive ? "rgba(124,106,247,0.18)" : "transparent",
         color: isActive ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
@@ -285,11 +294,12 @@ function FileTreeItem({
       {note.pinned && <Pin size={10} style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
       {note.starred && <Star size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
       <button
-        className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 transition-opacity"
+        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-white/10 transition-opacity"
         style={{ color: "var(--color-obsidian-muted-text)" }}
         onClick={(e) => { e.stopPropagation(); openMenu(null); }}
         aria-label="More options"
       >
+        <MoreHorizontal size={12} />
       </button>
       {menuOpen && (
         <>
@@ -300,7 +310,11 @@ function FileTreeItem({
               background: "var(--color-obsidian-surface)",
               border: "1px solid var(--color-obsidian-border)",
               ...(menuPos
-                ? { position: "fixed" as const, left: menuPos.x, top: menuPos.y }
+                ? {
+                    position: "fixed" as const,
+                    left: Math.min(menuPos.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 184),
+                    top: Math.min(menuPos.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 200),
+                  }
                 : { position: "absolute" as const, right: 0, top: "100%" }),
             }}
           >
@@ -773,8 +787,8 @@ export default function Sidebar({
                     style={{
                       background: "var(--color-obsidian-surface)",
                       border: "1px solid var(--color-obsidian-border)",
-                      left: explorerMenu.x,
-                      top: explorerMenu.y,
+                      left: Math.min(explorerMenu.x, (typeof window !== "undefined" ? window.innerWidth : 400) - 200),
+                      top: Math.min(explorerMenu.y, (typeof window !== "undefined" ? window.innerHeight : 800) - 250),
                     }}
                   >
                     <button
@@ -929,7 +943,7 @@ export default function Sidebar({
                 <button
                   key={note.id}
                   onClick={() => onStateChange({ activeNoteId: note.id, mainView: "editor" })}
-                  className="text-left px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
+                  className="text-left px-2 py-2 min-h-[44px] rounded-md hover:bg-white/5 transition-colors"
                   style={{
                     color: activeNoteId === note.id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
                     background: activeNoteId === note.id ? "rgba(124,106,247,0.15)" : "transparent",
@@ -962,7 +976,7 @@ export default function Sidebar({
                 <button
                   key={tag}
                   onClick={() => onStateChange({ searchQuery: tag, sidebarView: "search" })}
-                  className="flex items-center justify-between px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors text-left"
+                  className="flex items-center justify-between px-2 py-2 min-h-[44px] rounded-md hover:bg-white/5 transition-colors text-left"
                 >
                   <span className="text-xs" style={{ color: "var(--color-obsidian-tag)" }}>
                     #{tag}
@@ -990,7 +1004,7 @@ export default function Sidebar({
                 <button
                   key={note.id}
                   onClick={() => onStateChange({ activeNoteId: note.id, mainView: "editor" })}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors text-left"
+                  className="flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-md hover:bg-white/5 transition-colors text-left"
                   style={{ color: activeNoteId === note.id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)" }}
                 >
                   <Star size={11} style={{ color: "#f9e2af", flexShrink: 0 }} />
@@ -1011,7 +1025,7 @@ export default function Sidebar({
               {trashedNotes.map((note) => (
                 <div
                   key={note.id}
-                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors group"
+                  className="flex items-center gap-2 px-2 py-2 min-h-[44px] rounded-md hover:bg-white/5 transition-colors group"
                   style={{ color: "var(--color-obsidian-text)" }}
                 >
                   <NoteTypeIcon type={note.type} size={11} />
@@ -1021,16 +1035,16 @@ export default function Sidebar({
                   </span>
                   <button
                     onClick={() => onRestoreNote?.(note.id)}
-                    className="p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="p-1.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ color: "var(--color-obsidian-accent-soft)" }}
                     aria-label="Restore note"
                     title="Restore"
                   >
-                    <RotateCcw size={11} />
+                    <RotateCcw size={13} />
                   </button>
                   <button
                     onClick={() => onPermanentlyDelete?.(note.id)}
-                    className="p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="p-1.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ color: "#f38ba8" }}
                     aria-label="Delete permanently"
                     title="Delete permanently"

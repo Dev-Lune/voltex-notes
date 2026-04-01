@@ -622,6 +622,7 @@ function FrontmatterEditor({
                 style={{ color: "var(--color-obsidian-muted-text)" }}
                 aria-label="Remove field"
               >
+                <X size={12} />
               </button>
             </div>
           ))}
@@ -687,6 +688,7 @@ function TabBar({
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
               aria-label="Close tab"
             >
+              <X size={12} />
             </button>
           </div>
         );
@@ -832,7 +834,7 @@ function TableEditorDialog({ onInsert, onClose }: TableEditorDialogProps) {
       onClick={handleClose}
     >
       <div
-        className="relative w-full max-w-2xl mx-4 rounded-xl"
+        className="table-editor-dialog relative w-full max-w-2xl mx-4 rounded-xl"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
@@ -1129,6 +1131,7 @@ function Toolbar({
   onShareNote,
   shareStatus,
   isLoggedIn,
+  isMobile,
 }: {
   viewMode: AppState["viewMode"];
   onViewMode: (m: AppState["viewMode"]) => void;
@@ -1142,219 +1145,322 @@ function Toolbar({
   onShareNote?: (id: string) => void;
   shareStatus?: "idle" | "sharing" | "copied";
   isLoggedIn?: boolean;
+  isMobile?: boolean;
 }) {
   const isDrawing = note?.type === "drawing";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
 
+  const iconSize = isMobile ? 16 : 13;
+  const btnClass = isMobile
+    ? "p-2 rounded hover:bg-white/10 transition-colors"
+    : "p-1.5 rounded hover:bg-white/10 transition-colors";
+
+  const formattingInline = [
+    { icon: Bold, title: "Bold", insert: "**bold**" },
+    { icon: Italic, title: "Italic", insert: "*italic*" },
+    { icon: Code, title: "Code", insert: "`code`" },
+  ];
+
+  const formattingBlock = [
+    { icon: Heading1, title: "H1", insert: "\n# " },
+    { icon: Heading2, title: "H2", insert: "\n## " },
+    { icon: List, title: "Bullet list", insert: "\n- " },
+    { icon: ListOrdered, title: "Numbered list", insert: "\n1. " },
+    { icon: CheckSquare, title: "Task list", insert: "\n- [ ] " },
+    { icon: Quote, title: "Blockquote", insert: "\n> " },
+    { icon: Minus, title: "Horizontal rule", insert: "\n---\n" },
+    { icon: Link, title: "Link", insert: "[text](url)" },
+    { icon: Hash, title: "Tag", insert: "#tag " },
+    { icon: Table2, title: "Table", insert: "__table__" },
+  ];
+
+  const showFormatting = !isDrawing && viewMode !== "preview" && !!note;
+
   return (
     <>
-    <div
-      className="flex items-center gap-1 px-3 py-1 shrink-0"
-      style={{
-        borderBottom: "1px solid var(--color-obsidian-border)",
-        background: "var(--color-obsidian-bg)",
-      }}
-    >
-      {/* View mode — only for non-drawing notes */}
-      {!isDrawing && (
-        <>
-          <div
-            className="flex items-center rounded-md overflow-hidden"
-            style={{ border: "1px solid var(--color-obsidian-border)" }}
-          >
-            {(
-              [
-                { mode: "editor", icon: Edit3, title: "Edit (Ctrl+E)" },
-                { mode: "split", icon: Columns2, title: "Split view" },
-                { mode: "preview", icon: Eye, title: "Preview (Ctrl+E)" },
-              ] as const
-            ).map(({ mode, icon: Icon, title }) => (
+    <div className="shrink-0" style={{ borderBottom: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}>
+      {/* Row 1: View mode, note type, actions */}
+      <div className="editor-toolbar-row flex items-center gap-1 px-3 py-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+        {/* View mode — only for non-drawing notes */}
+        {!isDrawing && (
+          <>
+            <div
+              className="flex items-center rounded-md overflow-hidden"
+              style={{ border: "1px solid var(--color-obsidian-border)" }}
+            >
+              {(
+                isMobile
+                  ? [
+                      { mode: "editor" as const, icon: Edit3, title: "Edit" },
+                      { mode: "preview" as const, icon: Eye, title: "Preview" },
+                    ]
+                  : [
+                      { mode: "editor" as const, icon: Edit3, title: "Edit (Ctrl+E)" },
+                      { mode: "split" as const, icon: Columns2, title: "Split view" },
+                      { mode: "preview" as const, icon: Eye, title: "Preview (Ctrl+E)" },
+                    ]
+              ).map(({ mode, icon: Icon, title }) => (
+                <button
+                  key={mode}
+                  onClick={() => onViewMode(mode)}
+                  title={title}
+                  className={isMobile ? "px-3 py-1.5 transition-colors" : "px-2 py-1 transition-colors"}
+                  style={{
+                    background: viewMode === mode ? "var(--color-obsidian-accent)" : "transparent",
+                    color: viewMode === mode ? "#fff" : "var(--color-obsidian-muted-text)",
+                  }}
+                >
+                  <Icon size={iconSize} />
+                </button>
+              ))}
+            </div>
+            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
+          </>
+        )}
+
+        {/* Note type badge */}
+        {note && <NoteTypeBadge type={note.type} />}
+
+        {/* Formatting buttons — desktop only, inline in row 1 */}
+        {!isMobile && showFormatting && (
+          <>
+            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
+            {formattingInline.map(({ icon: Icon, title, insert }) => (
               <button
-                key={mode}
-                onClick={() => onViewMode(mode)}
+                key={title}
                 title={title}
-                className="px-2 py-1 transition-colors"
-                style={{
-                  background: viewMode === mode ? "var(--color-obsidian-accent)" : "transparent",
-                  color: viewMode === mode ? "#fff" : "var(--color-obsidian-muted-text)",
-                }}
+                className={btnClass}
+                style={{ color: "var(--color-obsidian-muted-text)" }}
+                onClick={() => onInsertText?.(insert)}
               >
-                <Icon size={13} />
+                <Icon size={iconSize} />
               </button>
             ))}
-          </div>
-          <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-        </>
-      )}
+            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
+            {formattingBlock.map(({ icon: Icon, title, insert }) => (
+              <button
+                key={title}
+                title={title}
+                className={btnClass}
+                style={{ color: "var(--color-obsidian-muted-text)" }}
+                onClick={() => insert === "__table__" ? setTableDialogOpen(true) : onInsertText?.(insert)}
+              >
+                <Icon size={iconSize} />
+              </button>
+            ))}
+          </>
+        )}
 
-      {/* Note type badge */}
-      {note && <NoteTypeBadge type={note.type} />}
+        <div className="flex-1" />
 
-      {/* Formatting buttons — markdown editor only */}
-      {!isDrawing && viewMode !== "preview" && note && (
-        <>
-          <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-          {[
-            { icon: Bold, title: "Bold (Ctrl+B)" },
-            { icon: Italic, title: "Italic (Ctrl+I)" },
-            { icon: Code, title: "Inline code" },
-          ].map(({ icon: Icon, title }) => (
+        {note && (
+          <>
             <button
-              key={title}
-              title={title}
-              className="p-1.5 rounded hover:bg-white/10 transition-colors"
-              style={{ color: "var(--color-obsidian-muted-text)" }}
+              onClick={() => onNoteChange(note.id, { starred: !note.starred })}
+              className={btnClass}
+              style={{ color: note.starred ? "#f9e2af" : "var(--color-obsidian-muted-text)" }}
+              title={note.starred ? "Remove bookmark" : "Bookmark"}
             >
-              <Icon size={13} />
+              {note.starred ? <Star size={iconSize} /> : <StarOff size={iconSize} />}
             </button>
-          ))}
-          <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-          {[
-            { icon: Heading1, title: "Heading 1" },
-            { icon: Heading2, title: "Heading 2" },
-            { icon: List, title: "Bullet list" },
-            { icon: ListOrdered, title: "Numbered list" },
-            { icon: CheckSquare, title: "Task list" },
-            { icon: Quote, title: "Blockquote" },
-            { icon: Minus, title: "Horizontal rule" },
-            { icon: Link, title: "Insert link" },
-            { icon: Hash, title: "Add tag" },
-          ].map(({ icon: Icon, title }) => (
-            <button
-              key={title}
-              title={title}
-              className="p-1.5 rounded hover:bg-white/10 transition-colors"
-              style={{ color: "var(--color-obsidian-muted-text)" }}
-            >
-              <Icon size={13} />
-            </button>
-          ))}
-          <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-          <button
-            title="Insert table"
-            className="p-1.5 rounded hover:bg-white/10 transition-colors"
-            style={{ color: "var(--color-obsidian-muted-text)" }}
-            onClick={() => setTableDialogOpen(true)}
-          >
-            <Table2 size={13} />
-          </button>
-        </>
-      )}
-
-      <div className="flex-1" />
-
-      {note && (
-        <>
-          <button
-            onClick={() => onNoteChange(note.id, { starred: !note.starred })}
-            className="p-1.5 rounded hover:bg-white/10 transition-colors"
-            style={{ color: note.starred ? "#f9e2af" : "var(--color-obsidian-muted-text)" }}
-            title={note.starred ? "Remove bookmark" : "Bookmark"}
-          >
-            {note.starred ? <Star size={13} /> : <StarOff size={13} />}
-          </button>
-          {isLoggedIn && (
-            <button
-              className="p-1.5 rounded hover:bg-white/10 transition-colors"
-              style={{ color: shareStatus === "copied" ? "#a6e3a1" : shareStatus === "sharing" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }}
-              title={shareStatus === "copied" ? "Link copied!" : shareStatus === "sharing" ? "Sharing…" : "Share note"}
-              onClick={() => note && shareStatus !== "sharing" && onShareNote?.(note.id)}
-              disabled={shareStatus === "sharing"}
-            >
-              {shareStatus === "copied" ? <Check size={13} /> : shareStatus === "sharing" ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
-            </button>
-          )}
-          <div className="relative">
-            <button
-              onClick={() => setMoreMenuOpen((v) => !v)}
-              className="p-1.5 rounded hover:bg-white/10 transition-colors"
-              style={{ color: moreMenuOpen ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}
-              title="More options"
-            >
-              <MoreHorizontal size={13} />
-            </button>
-            {moreMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-[998]" onClick={() => setMoreMenuOpen(false)} />
-                <div
-                  className="absolute right-0 top-full mt-1 z-[999] w-48 rounded-lg overflow-hidden shadow-xl"
-                  style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
-                >
-                  {!isDrawing && (
-                    <button
-                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                      style={{ color: "var(--color-obsidian-text)" }}
-                      onClick={() => { setMoreMenuOpen(false); onToggleFindReplace?.(); }}
-                    >
-                      <Search size={11} /> Find & Replace
-                    </button>
-                  )}
-                  <button
-                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                    style={{ color: "var(--color-obsidian-text)" }}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      if (note) onDuplicateNote?.(note.id);
-                    }}
-                  >
-                    <Copy size={11} /> Duplicate note
-                  </button>
-                  <button
-                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                    style={{ color: "var(--color-obsidian-text)" }}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      if (note) {
-                        const blob = new Blob([`# ${note.title}\n\n${note.content}`], { type: "text/markdown" });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement("a");
-                        a.href = url;
-                        a.download = `${note.title}.md`;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }
-                    }}
-                  >
-                    <Download size={11} /> Export as Markdown
-                  </button>
-                  <button
-                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                    style={{ color: "var(--color-obsidian-text)" }}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      if (note) navigator.clipboard.writeText(note.content);
-                    }}
-                  >
-                    <Clipboard size={11} /> Copy content
-                  </button>
-                  <div className="my-0.5" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
-                  <button
-                    className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                    style={{ color: "#f38ba8" }}
-                    onClick={() => {
-                      setMoreMenuOpen(false);
-                      if (note) onDeleteNote?.(note.id);
-                    }}
-                  >
-                    <Trash2 size={11} /> Delete note
-                  </button>
-                </div>
-              </>
+            {isLoggedIn && (
+              <button
+                className={btnClass}
+                style={{ color: shareStatus === "copied" ? "#a6e3a1" : shareStatus === "sharing" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }}
+                title={shareStatus === "copied" ? "Link copied!" : shareStatus === "sharing" ? "Sharing…" : "Share note"}
+                onClick={() => note && shareStatus !== "sharing" && onShareNote?.(note.id)}
+                disabled={shareStatus === "sharing"}
+              >
+                {shareStatus === "copied" ? <Check size={iconSize} /> : shareStatus === "sharing" ? <Loader2 size={iconSize} className="animate-spin" /> : <Share2 size={iconSize} />}
+              </button>
             )}
-          </div>
-        </>
-      )}
+            <div className="relative">
+              <button
+                onClick={() => setMoreMenuOpen((v) => !v)}
+                className={btnClass}
+                style={{ color: moreMenuOpen ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}
+                title="More options"
+              >
+                <MoreHorizontal size={iconSize} />
+              </button>
+              {moreMenuOpen && (
+                <>
+                  <div className="fixed inset-0 z-[998]" onClick={() => setMoreMenuOpen(false)} />
+                  {isMobile ? (
+                    /* Mobile: bottom sheet menu */
+                    <div
+                      className="fixed left-0 right-0 bottom-0 z-[999] rounded-t-2xl overflow-hidden shadow-2xl"
+                      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)", borderBottom: "none", paddingBottom: "env(safe-area-inset-bottom, 16px)" }}
+                    >
+                      <div className="flex justify-center pt-2 pb-1">
+                        <div className="w-10 h-1 rounded-full" style={{ background: "var(--color-obsidian-border)" }} />
+                      </div>
+                      {!isDrawing && (
+                        <button
+                          className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleFindReplace?.(); }}
+                        >
+                          <Search size={16} /> Find & Replace
+                        </button>
+                      )}
+                      <button
+                        className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => { setMoreMenuOpen(false); if (note) onDuplicateNote?.(note.id); }}
+                      >
+                        <Copy size={16} /> Duplicate note
+                      </button>
+                      <button
+                        className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          if (note) {
+                            const blob = new Blob([`# ${note.title}\n\n${note.content}`], { type: "text/markdown" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `${note.title}.md`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }
+                        }}
+                      >
+                        <Download size={16} /> Export as Markdown
+                      </button>
+                      <button
+                        className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => { setMoreMenuOpen(false); if (note) navigator.clipboard.writeText(note.content); }}
+                      >
+                        <Clipboard size={16} /> Copy content
+                      </button>
+                      <div className="mx-4 my-1" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
+                      <button
+                        className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                        style={{ color: "#f38ba8" }}
+                        onClick={() => { setMoreMenuOpen(false); if (note) onDeleteNote?.(note.id); }}
+                      >
+                        <Trash2 size={16} /> Delete note
+                      </button>
+                      <div className="h-2" />
+                    </div>
+                  ) : (
+                    /* Desktop: dropdown menu */
+                    <div
+                      className="absolute right-0 top-full mt-1 z-[999] w-48 rounded-lg overflow-hidden shadow-xl"
+                      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+                    >
+                      {!isDrawing && (
+                        <button
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleFindReplace?.(); }}
+                        >
+                          <Search size={11} /> Find & Replace
+                        </button>
+                      )}
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          if (note) onDuplicateNote?.(note.id);
+                        }}
+                      >
+                        <Copy size={11} /> Duplicate note
+                      </button>
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          if (note) {
+                            const blob = new Blob([`# ${note.title}\n\n${note.content}`], { type: "text/markdown" });
+                            const url = URL.createObjectURL(blob);
+                            const a = document.createElement("a");
+                            a.href = url;
+                            a.download = `${note.title}.md`;
+                            a.click();
+                            URL.revokeObjectURL(url);
+                          }
+                        }}
+                      >
+                        <Download size={11} /> Export as Markdown
+                      </button>
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          if (note) navigator.clipboard.writeText(note.content);
+                        }}
+                      >
+                        <Clipboard size={11} /> Copy content
+                      </button>
+                      <div className="my-0.5" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "#f38ba8" }}
+                        onClick={() => {
+                          setMoreMenuOpen(false);
+                          if (note) onDeleteNote?.(note.id);
+                        }}
+                      >
+                        <Trash2 size={11} /> Delete note
+                      </button>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </>
+        )}
 
-      <button
-        onClick={() => onNewNote()}
-        className="flex items-center gap-1 px-2 py-1 rounded-md text-xs transition-colors"
-        style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
-        title="New note (Ctrl+N)"
-      >
-        <Plus size={12} />
-        New
-      </button>
+        <button
+          onClick={() => onNewNote()}
+          className={`flex items-center gap-1 rounded-md text-xs transition-colors ${isMobile ? "px-3 py-2" : "px-2 py-1"}`}
+          style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+          title="New note (Ctrl+N)"
+        >
+          <Plus size={12} />
+          New
+        </button>
+      </div>
+
+      {/* Row 2: Formatting tools — mobile only, wrapping */}
+      {isMobile && showFormatting && (
+        <div
+          className="flex flex-wrap items-center gap-1 px-3 py-1.5"
+          style={{ borderTop: "1px solid var(--color-obsidian-border)" }}
+        >
+          {formattingInline.map(({ icon: Icon, title, insert }) => (
+            <button
+              key={title}
+              title={title}
+              className={btnClass}
+              style={{ color: "var(--color-obsidian-muted-text)" }}
+              onClick={() => onInsertText?.(insert)}
+            >
+              <Icon size={iconSize} />
+            </button>
+          ))}
+          <div className="h-4 w-px mx-0.5" style={{ background: "var(--color-obsidian-border)" }} />
+          {formattingBlock.map(({ icon: Icon, title, insert }) => (
+            <button
+              key={title}
+              title={title}
+              className={btnClass}
+              style={{ color: "var(--color-obsidian-muted-text)" }}
+              onClick={() => insert === "__table__" ? setTableDialogOpen(true) : onInsertText?.(insert)}
+            >
+              <Icon size={iconSize} />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
 
     {tableDialogOpen && (
@@ -1540,9 +1646,9 @@ function EditorPane({
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="mx-auto px-10 pt-10 pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
+      <div className="editor-content-area mx-auto px-10 pt-10 pb-20 md:pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
         <input
-          className="w-full bg-transparent outline-none text-3xl font-bold mb-1"
+          className="editor-title w-full bg-transparent outline-none text-3xl font-bold mb-1"
           style={{ color: "var(--color-obsidian-text)", lineHeight: 1.3 }}
           value={note.title}
           onChange={(e) => onTitleChange(e.target.value)}
@@ -1618,16 +1724,18 @@ function PreviewPane({
   onWikilinkClick,
   onHoverLink,
   onHoverEnd,
+  onToggleCheckbox,
 }: {
   note: Note;
   notes?: Note[];
   onWikilinkClick: (title: string) => void;
   onHoverLink?: (title: string, rect: DOMRect) => void;
   onHoverEnd?: () => void;
+  onToggleCheckbox?: (lineIndex: number) => void;
 }) {
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="max-w-3xl mx-auto px-8 py-8">
+      <div className="preview-content-area max-w-3xl mx-auto px-8 py-8">
         <h1 className="text-3xl font-bold mb-6" style={{ color: "var(--color-obsidian-text)" }}>
           {note.title}
         </h1>
@@ -1648,6 +1756,7 @@ function PreviewPane({
           onWikilinkClick={onWikilinkClick}
           onHoverLink={onHoverLink}
           onHoverEnd={onHoverEnd}
+          onToggleCheckbox={onToggleCheckbox}
         />
       </div>
     </div>
@@ -1822,7 +1931,7 @@ function EmptyState({ onNewNote, installedPluginIds }: { onNewNote: (type?: Note
         </div>
       </div>
       <div
-        className="grid grid-cols-3 gap-3 text-xs text-center"
+        className="empty-state-shortcuts grid grid-cols-3 gap-3 text-xs text-center"
         style={{ color: "var(--color-obsidian-muted-text)" }}
       >
         {[
@@ -1862,7 +1971,9 @@ export default function Editor({
   onNewNote,
   isMobile = false,
 }: EditorProps) {
-  const { notes, activeNoteId, openNoteIds, viewMode } = state;
+  const { notes, activeNoteId, openNoteIds } = state;
+  // On mobile, force split view to editor mode
+  const viewMode = isMobile && state.viewMode === "split" ? "editor" : state.viewMode;
   const activeNote = notes.find((n) => n.id === activeNoteId) ?? null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [wordCount, setWordCount] = useState(0);
@@ -1921,6 +2032,21 @@ export default function Editor({
   const handleHoverEnd = () => {
     setHoverPreview(null);
   };
+
+  const handleToggleCheckbox = useCallback((lineIndex: number) => {
+    if (!activeNote) return;
+    const lines = activeNote.content.split("\n");
+    if (lineIndex < 0 || lineIndex >= lines.length) return;
+    const line = lines[lineIndex];
+    if (line.includes("[ ] ")) {
+      lines[lineIndex] = line.replace("[ ] ", "[x] ");
+    } else if (line.includes("[x] ")) {
+      lines[lineIndex] = line.replace("[x] ", "[ ] ");
+    } else {
+      return;
+    }
+    handleContentChange(lines.join("\n"));
+  }, [activeNote, handleContentChange]);
 
   // Keyboard shortcut for Find
   useEffect(() => {
@@ -2089,6 +2215,7 @@ export default function Editor({
           onWikilinkClick={handleWikilinkClick}
           onHoverLink={handleHoverLink}
           onHoverEnd={handleHoverEnd}
+          onToggleCheckbox={handleToggleCheckbox}
         />
       );
     }
@@ -2118,6 +2245,7 @@ export default function Editor({
             onWikilinkClick={handleWikilinkClick}
             onHoverLink={handleHoverLink}
             onHoverEnd={handleHoverEnd}
+            onToggleCheckbox={handleToggleCheckbox}
           />
         </div>
       </>
@@ -2156,6 +2284,7 @@ export default function Editor({
           onShareNote={shareNote}
           shareStatus={shareStatus}
           isLoggedIn={!!state.user}
+          isMobile={isMobile}
         />
       )}
       {/* Find & Replace */}
@@ -2170,7 +2299,7 @@ export default function Editor({
       <div className={`flex-1 min-h-0 overflow-hidden flex`}>
         {renderNoteContent()}
       </div>
-      <StatusBar note={activeNote} wordCount={wordCount} />
+      {!isMobile && <StatusBar note={activeNote} wordCount={wordCount} />}
       {/* Hover Preview */}
       {hoverPreview && (
         <HoverPreview

@@ -1003,7 +1003,7 @@ function GeneralTab({
             value={preferences.defaultNoteLocation}
             options={[
               { value: "root", label: "Vault root" },
-              ...folders.map((f) => ({ value: f.id, label: f.name })),
+              ...folders.filter((f) => f.id !== "root").map((f) => ({ value: f.id, label: f.name })),
             ]}
             onChange={(v) => onPreferencesChange({ defaultNoteLocation: v })}
           />

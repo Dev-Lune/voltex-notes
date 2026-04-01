@@ -887,7 +887,7 @@ export default function ObsidianApp() {
         )}
 
         {/* Center — editor or graph */}
-        <div className="flex-1 overflow-hidden" style={{ paddingBottom: isMobile ? 56 : 0, minWidth: isMobile ? undefined : 400 }}>
+        <div className="flex-1 overflow-hidden" style={{ paddingBottom: isMobile ? 80 : 0, minWidth: isMobile ? undefined : 400 }}>
           {state.mainView === "editor" ? (
             <Editor
               state={state}
@@ -1145,6 +1145,7 @@ function WelcomeModal({ onDismiss, onSignIn }: { onDismiss: () => void; onSignIn
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
           animation: "scaleIn 0.3s ease",
+          maxHeight: "calc(100dvh - 32px)",
         }}
       >
         {/* Close button */}
@@ -1157,7 +1158,7 @@ function WelcomeModal({ onDismiss, onSignIn }: { onDismiss: () => void; onSignIn
           <X size={18} />
         </button>
 
-        <div className="flex flex-col md:flex-row max-h-[85vh]">
+        <div className="flex flex-col md:flex-row" style={{ maxHeight: "calc(100dvh - 34px)", overflowY: "auto" }}>
           {/* Left — Features */}
           <div className="flex-1 p-6 md:p-8 overflow-y-auto" style={{ borderRight: "1px solid var(--color-obsidian-border)" }}>
             {/* Mini hero */}
@@ -1284,9 +1285,11 @@ function WorkspaceSetupDialog({ onSelect }: { onSelect: (choice: "docs" | "empty
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
           animation: "scaleIn 0.3s ease",
+          maxHeight: "calc(100dvh - 32px)",
+          overflowY: "auto",
         }}
       >
-        <div className="p-8">
+        <div className="p-6 sm:p-8">
           <h2 className="text-2xl font-bold text-center mb-2" style={{ color: "var(--color-obsidian-text)" }}>
             Set Up Your Workspace
           </h2>
@@ -1400,11 +1403,11 @@ interface UserInfoPanelProps {
 function UserInfoPanel({ user, notesCount, syncStatus, onClose, onSignIn, onOpenSettings }: UserInfoPanelProps) {
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-start justify-end pt-12 pr-3"
+      className="user-info-backdrop fixed inset-0 z-[200] flex items-start justify-end pt-12 pr-3"
       onClick={onClose}
     >
       <div
-        className="w-80 rounded-xl overflow-hidden"
+        className="user-info-panel w-80 rounded-xl overflow-hidden"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
