@@ -145,6 +145,7 @@ function FileTreeItem({
   onClick,
   onDelete,
   onRename,
+  onStarToggle,
   selectionMode,
   isSelected,
   onToggleSelect,
@@ -154,11 +155,13 @@ function FileTreeItem({
   onClick: () => void;
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
+  onStarToggle?: (id: string, starred: boolean) => void;
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
   const [renaming, setRenaming] = useState(false);
   const [renameVal, setRenameVal] = useState(note.title);
 
@@ -167,8 +170,55 @@ function FileTreeItem({
     e.dataTransfer.effectAllowed = "move";
   };
 
+  const openMenu = (pos: { x: number; y: number } | null) => {
+    setMenuPos(pos);
+    setMenuOpen(true);
+  };
+
+  const closeMenu = () => {
+    setMenuOpen(false);
+    setMenuPos(null);
+  };
+
+  const handleContextMenu = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    openMenu({ x: e.clientX, y: e.clientY });
+  };
+
+  const menuItems = (
+    <>
+      <button
+        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-text)" }}
+        onClick={(e) => { e.stopPropagation(); setRenaming(true); setRenameVal(note.title); closeMenu(); }}
+      >
+        <Edit3 size={11} /> Rename
+      </button>
+      {onStarToggle && (
+        <button
+          className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+          style={{ color: note.starred ? "#f9e2af" : "var(--color-obsidian-text)" }}
+          onClick={(e) => { e.stopPropagation(); onStarToggle(note.id, !note.starred); closeMenu(); }}
+        >
+          {note.starred ? <Star size={11} /> : <Bookmark size={11} />}
+          {note.starred ? "Remove bookmark" : "Bookmark"}
+        </button>
+      )}
+      <div style={{ borderTop: "1px solid var(--color-obsidian-border)", margin: "2px 0" }} />
+      <button
+        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "#f38ba8" }}
+        onClick={(e) => { e.stopPropagation(); onDelete(note.id); closeMenu(); }}
+      >
+        <Trash2 size={11} /> Delete
+      </button>
+    </>
+  );
+
   return (
     <div
+      data-file-item
       className="group relative flex items-center gap-2 px-3 py-1 rounded-md cursor-pointer text-sm transition-colors"
       style={{
         background: isSelected ? "rgba(243,139,168,0.15)" : isActive ? "rgba(124,106,247,0.18)" : "transparent",
@@ -181,6 +231,7 @@ function FileTreeItem({
           onClick();
         }
       }}
+      onContextMenu={handleContextMenu}
       draggable={!renaming && !selectionMode}
       onDragStart={handleDragStart}
     >
@@ -216,31 +267,26 @@ function FileTreeItem({
       <button
         className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 transition-opacity"
         style={{ color: "var(--color-obsidian-muted-text)" }}
-        onClick={(e) => { e.stopPropagation(); setMenuOpen((v) => !v); }}
+        onClick={(e) => { e.stopPropagation(); openMenu(null); }}
       >
         <MoreHorizontal size={12} />
       </button>
       {menuOpen && (
-        <div
-          className="absolute right-0 top-full z-50 w-40 rounded-lg overflow-hidden shadow-xl"
-          style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
-          onMouseLeave={() => setMenuOpen(false)}
-        >
-          <button
-            className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-            style={{ color: "var(--color-obsidian-text)" }}
-            onClick={(e) => { e.stopPropagation(); setRenaming(true); setMenuOpen(false); }}
+        <>
+          <div className="fixed inset-0 z-[999]" onClick={(e) => { e.stopPropagation(); closeMenu(); }} />
+          <div
+            className="z-[1000] w-44 rounded-lg overflow-hidden shadow-xl"
+            style={{
+              background: "var(--color-obsidian-surface)",
+              border: "1px solid var(--color-obsidian-border)",
+              ...(menuPos
+                ? { position: "fixed" as const, left: menuPos.x, top: menuPos.y }
+                : { position: "absolute" as const, right: 0, top: "100%" }),
+            }}
           >
-            <Edit3 size={11} /> Rename
-          </button>
-          <button
-            className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-            style={{ color: "#f38ba8" }}
-            onClick={(e) => { e.stopPropagation(); onDelete(note.id); setMenuOpen(false); }}
-          >
-            <Trash2 size={11} /> Delete
-          </button>
-        </div>
+            {menuItems}
+          </div>
+        </>
       )}
     </div>
   );
@@ -256,6 +302,7 @@ function FolderGroup({
   onDeleteNote,
   onRenameNote,
   onMoveNoteToFolder,
+  onStarToggle,
   selectionMode,
   selectedIds,
   onToggleSelect,
@@ -267,6 +314,7 @@ function FolderGroup({
   onDeleteNote: (id: string) => void;
   onRenameNote: (id: string, title: string) => void;
   onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
+  onStarToggle?: (id: string, starred: boolean) => void;
   selectionMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -296,6 +344,7 @@ function FolderGroup({
 
   return (
     <div
+      data-file-item
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -323,6 +372,7 @@ function FolderGroup({
             onClick={() => onNoteClick(note.id)}
             onDelete={onDeleteNote}
             onRename={onRenameNote}
+            onStarToggle={onStarToggle}
             selectionMode={selectionMode}
             isSelected={selectedIds?.has(note.id)}
             onToggleSelect={onToggleSelect}
@@ -352,6 +402,7 @@ export default function Sidebar({
   const [newFolderName, setNewFolderName] = useState("");
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [explorerMenu, setExplorerMenu] = useState<{ x: number; y: number } | null>(null);
   const allTags = getAllTags(notes);
 
   const toggleSelect = (id: string) => {
@@ -366,6 +417,12 @@ export default function Sidebar({
     selectedIds.forEach((id) => onDeleteNote(id));
     setSelectedIds(new Set());
     setSelectionMode(false);
+  };
+
+  const handleStarToggle = (id: string, starred: boolean) => {
+    onStateChange({
+      notes: notes.map((n) => n.id === id ? { ...n, starred } : n),
+    });
   };
 
   const exitSelectionMode = () => {
@@ -610,8 +667,68 @@ export default function Sidebar({
         <div className="flex-1 overflow-y-auto py-1">
           {/* Files */}
           {sidebarView === "files" && (
-            <div className="flex flex-col gap-1">
-              {/* New folder input */}
+            <div
+              className="flex flex-col gap-1 relative"
+              style={{ minHeight: "100%" }}
+              onContextMenu={(e) => {
+                // Only show explorer menu if right-clicking on the background (not a child item)
+                if ((e.target as HTMLElement).closest("[data-file-item]")) return;
+                e.preventDefault();
+                setExplorerMenu({ x: e.clientX, y: e.clientY });
+              }}
+            >
+              {/* Explorer context menu */}
+              {explorerMenu && (
+                <>
+                  <div className="fixed inset-0 z-[999]" onClick={() => setExplorerMenu(null)} onContextMenu={(e) => { e.preventDefault(); setExplorerMenu(null); }} />
+                  <div
+                    className="fixed z-[1000] w-48 rounded-lg overflow-hidden shadow-xl"
+                    style={{
+                      background: "var(--color-obsidian-surface)",
+                      border: "1px solid var(--color-obsidian-border)",
+                      left: explorerMenu.x,
+                      top: explorerMenu.y,
+                    }}
+                  >
+                    <button
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { onNewNote("markdown"); setExplorerMenu(null); }}
+                    >
+                      <FileText size={11} /> New Note
+                    </button>
+                    <button
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { onNewNote("drawing"); setExplorerMenu(null); }}
+                    >
+                      <Pencil size={11} /> New Drawing
+                    </button>
+                    <button
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { onNewNote("daily"); setExplorerMenu(null); }}
+                    >
+                      <CalendarDays size={11} /> New Daily Note
+                    </button>
+                    <button
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { onNewNote("kanban"); setExplorerMenu(null); }}
+                    >
+                      <LayoutGrid size={11} /> New Kanban Board
+                    </button>
+                    <div style={{ borderTop: "1px solid var(--color-obsidian-border)", margin: "2px 0" }} />
+                    <button
+                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { setCreatingFolder(true); setExplorerMenu(null); }}
+                    >
+                      <FolderPlus size={11} /> New Folder
+                    </button>
+                  </div>
+                </>
+              )}              {/* New folder input */}
               {creatingFolder && (
                 <div className="flex items-center gap-1.5 px-3 py-1">
                   <Folder size={11} style={{ color: "var(--color-obsidian-muted-text)", flexShrink: 0 }} />
@@ -656,6 +773,7 @@ export default function Sidebar({
                   onDeleteNote={onDeleteNote}
                   onRenameNote={onRenameNote}
                   onMoveNoteToFolder={onMoveNoteToFolder}
+                  onStarToggle={handleStarToggle}
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
@@ -670,6 +788,7 @@ export default function Sidebar({
                   onClick={() => onNoteOpen ? onNoteOpen(note.id) : onStateChange({ activeNoteId: note.id, mainView: "editor" })}
                   onDelete={onDeleteNote}
                   onRename={onRenameNote}
+                  onStarToggle={handleStarToggle}
                   selectionMode={selectionMode}
                   isSelected={selectedIds.has(note.id)}
                   onToggleSelect={toggleSelect}

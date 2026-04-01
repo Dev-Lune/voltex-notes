@@ -70,7 +70,7 @@ function PluginCard({
   const handleInstall = async (e: React.MouseEvent) => {
     e.stopPropagation();
     setInstalling(true);
-    // Simulate async install
+    // Brief delay for visual feedback
     await new Promise((r) => setTimeout(r, 800));
     onInstall(item.id);
     setInstalling(false);

@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { AppState, NoteType, Note } from "./data";
 
-// ─── Android Haptic Feedback (simulated) ──────────────────────────────────────
+// ─── Haptic Feedback ──────────────────────────────────────────────────────────
 
 function triggerHaptic(type: "light" | "medium" | "heavy" = "light") {
   if (typeof window !== "undefined" && "vibrate" in navigator) {
@@ -451,7 +451,11 @@ export function MobileBottomSheet({
     };
   }, [isOpen, onClose]);
 
-  const height = typeof window !== "undefined" ? window.innerHeight * snapPoints[currentSnap] : 400;
+  const [height, setHeight] = useState(400);
+
+  useEffect(() => {
+    setHeight(window.innerHeight * snapPoints[currentSnap]);
+  }, [currentSnap, snapPoints]);
 
   return (
     <>

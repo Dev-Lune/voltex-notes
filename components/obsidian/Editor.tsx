@@ -708,6 +708,7 @@ function Toolbar({
   onInsertText,
   onShareNote,
   shareStatus,
+  isLoggedIn,
 }: {
   viewMode: AppState["viewMode"];
   onViewMode: (m: AppState["viewMode"]) => void;
@@ -720,6 +721,7 @@ function Toolbar({
   onInsertText?: (text: string) => void;
   onShareNote?: (id: string) => void;
   shareStatus?: "idle" | "sharing" | "copied";
+  isLoggedIn?: boolean;
 }) {
   const isDrawing = note?.type === "drawing";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
@@ -830,15 +832,17 @@ function Toolbar({
           >
             {note.starred ? <Star size={13} /> : <StarOff size={13} />}
           </button>
-          <button
-            className="p-1.5 rounded hover:bg-white/10 transition-colors"
-            style={{ color: shareStatus === "copied" ? "#a6e3a1" : shareStatus === "sharing" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }}
-            title={shareStatus === "copied" ? "Link copied!" : shareStatus === "sharing" ? "Sharing…" : "Share note"}
-            onClick={() => note && shareStatus !== "sharing" && onShareNote?.(note.id)}
-            disabled={shareStatus === "sharing"}
-          >
-            {shareStatus === "copied" ? <Check size={13} /> : shareStatus === "sharing" ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
-          </button>
+          {isLoggedIn && (
+            <button
+              className="p-1.5 rounded hover:bg-white/10 transition-colors"
+              style={{ color: shareStatus === "copied" ? "#a6e3a1" : shareStatus === "sharing" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }}
+              title={shareStatus === "copied" ? "Link copied!" : shareStatus === "sharing" ? "Sharing…" : "Share note"}
+              onClick={() => note && shareStatus !== "sharing" && onShareNote?.(note.id)}
+              disabled={shareStatus === "sharing"}
+            >
+              {shareStatus === "copied" ? <Check size={13} /> : shareStatus === "sharing" ? <Loader2 size={13} className="animate-spin" /> : <Share2 size={13} />}
+            </button>
+          )}
           <div className="relative">
             <button
               onClick={() => setMoreMenuOpen((v) => !v)}
@@ -1721,6 +1725,7 @@ export default function Editor({
           onInsertText={handleInsertText}
           onShareNote={shareNote}
           shareStatus={shareStatus}
+          isLoggedIn={!!state.user}
         />
       )}
       {/* Find & Replace */}

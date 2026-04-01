@@ -473,7 +473,7 @@ export default function ObsidianApp() {
   // Handle auth
   const handleAuth = useCallback(
     (user: { email: string; displayName: string; uid: string }) => {
-      patch({ user, authModalOpen: false, syncStatus: "synced" });
+      patch({ user, authModalOpen: false, syncStatus: "syncing" });
     },
     [patch]
   );
