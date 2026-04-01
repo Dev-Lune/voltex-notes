@@ -1,0 +1,726 @@
+@import 'tailwindcss';
+@import 'tw-animate-css';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Obsidian-Cloud Design Tokens
+   ══════════════════════════════════════════════════════════════════════════════ */
+:root {
+  /* Base palette */
+  --obs-bg:          #1e1e2e;
+  --obs-surface:     #252535;
+  --obs-surface-2:   #2a2a3d;
+  --obs-border:      #353550;
+  --obs-text:        #cdd6f4;
+  --obs-muted:       #6c7086;
+  --obs-accent:      #7c6af7;
+  --obs-accent-soft: #a78bfa;
+  --obs-link:        #89b4fa;
+  --obs-tag:         #cba6f7;
+  --obs-tag-bg:      rgba(203,166,247,0.12);
+  --obs-code-bg:     #181825;
+  --obs-code-text:   #a6e3a1;
+  --obs-success:     #a6e3a1;
+  --obs-warning:     #f9e2af;
+  --obs-danger:      #f38ba8;
+  --obs-node:        #7c6af7;
+
+  /* shadcn tokens */
+  --background: var(--obs-bg);
+  --foreground: var(--obs-text);
+  --card: var(--obs-surface);
+  --card-foreground: var(--obs-text);
+  --popover: var(--obs-surface);
+  --popover-foreground: var(--obs-text);
+  --primary: var(--obs-accent);
+  --primary-foreground: #fff;
+  --secondary: var(--obs-surface-2);
+  --secondary-foreground: var(--obs-text);
+  --muted: var(--obs-surface-2);
+  --muted-foreground: var(--obs-muted);
+  --accent: var(--obs-accent);
+  --accent-foreground: #fff;
+  --destructive: var(--obs-danger);
+  --destructive-foreground: #fff;
+  --border: var(--obs-border);
+  --input: var(--obs-surface-2);
+  --ring: var(--obs-accent);
+  --radius: 0.5rem;
+
+  /* Custom CSS variables */
+  --color-obsidian-bg:         var(--obs-bg);
+  --color-obsidian-surface:    var(--obs-surface);
+  --color-obsidian-surface-2:  var(--obs-surface-2);
+  --color-obsidian-border:     var(--obs-border);
+  --color-obsidian-text:       var(--obs-text);
+  --color-obsidian-muted-text: var(--obs-muted);
+  --color-obsidian-accent:     var(--obs-accent);
+  --color-obsidian-accent-soft:var(--obs-accent-soft);
+  --color-obsidian-link:       var(--obs-link);
+  --color-obsidian-tag:        var(--obs-tag);
+  --color-obsidian-tag-bg:     var(--obs-tag-bg);
+  --color-obsidian-code-bg:    var(--obs-code-bg);
+  --color-obsidian-code-text:  var(--obs-code-text);
+}
+
+@theme inline {
+  --font-sans: 'Inter', 'Inter Fallback', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
+  --font-mono: 'Geist Mono', 'Geist Mono Fallback', ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+
+  --color-background:              var(--background);
+  --color-foreground:              var(--foreground);
+  --color-card:                    var(--card);
+  --color-card-foreground:         var(--card-foreground);
+  --color-popover:                 var(--popover);
+  --color-popover-foreground:      var(--popover-foreground);
+  --color-primary:                 var(--primary);
+  --color-primary-foreground:      var(--primary-foreground);
+  --color-secondary:               var(--secondary);
+  --color-secondary-foreground:    var(--secondary-foreground);
+  --color-muted:                   var(--muted);
+  --color-muted-foreground:        var(--muted-foreground);
+  --color-accent:                  var(--accent);
+  --color-accent-foreground:       var(--accent-foreground);
+  --color-destructive:             var(--destructive);
+  --color-destructive-foreground:  var(--destructive-foreground);
+  --color-border:                  var(--border);
+  --color-input:                   var(--input);
+  --color-ring:                    var(--ring);
+
+  --color-obsidian-bg:          var(--obs-bg);
+  --color-obsidian-surface:     var(--obs-surface);
+  --color-obsidian-surface-2:   var(--obs-surface-2);
+  --color-obsidian-border:      var(--obs-border);
+  --color-obsidian-text:        var(--obs-text);
+  --color-obsidian-muted-text:  var(--obs-muted);
+  --color-obsidian-accent:      var(--obs-accent);
+  --color-obsidian-accent-soft: var(--obs-accent-soft);
+  --color-obsidian-link:        var(--obs-link);
+  --color-obsidian-tag:         var(--obs-tag);
+  --color-obsidian-tag-bg:      var(--obs-tag-bg);
+  --color-obsidian-code-bg:     var(--obs-code-bg);
+  --color-obsidian-code-text:   var(--obs-code-text);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Base Layer
+   ══════════════════════════════════════════════════════════════════════════════ */
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html, body {
+    height: 100%;
+    overflow: hidden;
+    overscroll-behavior: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    background-color: var(--obs-bg);
+    color: var(--obs-text);
+    touch-action: manipulation;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 5px;
+    height: 5px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: var(--obs-border);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--obs-muted);
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(124, 106, 247, 0.35);
+    color: var(--obs-text);
+  }
+
+  /* Smooth scrolling */
+  * {
+    scroll-behavior: smooth;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Mobile-first Responsive Utilities
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Hide on mobile */
+@media (max-width: 767px) {
+  .hide-mobile { display: none !important; }
+}
+
+/* Show only on mobile */
+@media (min-width: 768px) {
+  .show-mobile-only { display: none !important; }
+}
+
+/* Touch-friendly tap targets (Android Material Design spec: 48dp) */
+@media (pointer: coarse) {
+  .tap-target {
+    min-height: 48px;
+    min-width: 48px;
+  }
+}
+
+/* Safe area insets */
+@supports (padding: env(safe-area-inset-bottom)) {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+  .safe-top {
+    padding-top: env(safe-area-inset-top);
+  }
+  .safe-left {
+    padding-left: env(safe-area-inset-left);
+  }
+  .safe-right {
+    padding-right: env(safe-area-inset-right);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Android Material Design Styles
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* Mobile Header - Material Design App Bar */
+.mobile-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 4px 0 4px;
+  background: var(--obs-surface);
+  border-bottom: 1px solid var(--obs-border);
+  padding-top: env(safe-area-inset-top);
+  position: sticky;
+  top: 0;
+  z-index: 50;
+}
+
+/* Mobile Bottom Navigation - Material Design 3 */
+.mobile-bottom-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  height: 80px;
+  background: var(--obs-surface);
+  border-top: 1px solid var(--obs-border);
+  z-index: 100;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.mobile-nav-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex: 1;
+  padding: 12px 0 16px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-nav-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 64px;
+  height: 32px;
+  border-radius: 16px;
+  color: var(--obs-muted);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.mobile-nav-icon.active {
+  background: rgba(124, 106, 247, 0.2);
+  color: var(--obs-accent-soft);
+}
+
+.mobile-nav-label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--obs-muted);
+  transition: color 0.2s ease;
+}
+
+.mobile-nav-item.active .mobile-nav-label {
+  color: var(--obs-accent-soft);
+}
+
+/* Floating Action Button */
+.mobile-nav-fab {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--obs-accent), var(--obs-accent-soft));
+  box-shadow: 0 4px 12px rgba(124, 106, 247, 0.4);
+  margin-top: -20px;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.mobile-nav-fab:active {
+  transform: scale(0.95);
+  box-shadow: 0 2px 8px rgba(124, 106, 247, 0.3);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Android Ripple Effect
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  .ripple {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .ripple::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.15);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    opacity: 0;
+    transition: width 0.3s ease, height 0.3s ease, opacity 0.3s ease;
+  }
+
+  .ripple:active::after {
+    width: 200%;
+    height: 200%;
+    opacity: 1;
+    transition: 0s;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Mobile Drawer Transitions
+   ══════════════════════════════════════════════════════════════════════════════ */
+.mobile-drawer {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.mobile-drawer-overlay {
+  transition: opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: opacity;
+}
+
+.mobile-drawer-closed {
+  transform: translateX(-100%);
+}
+
+.mobile-drawer-open {
+  transform: translateX(0);
+}
+
+/* Bottom sheet animation */
+.bottom-sheet {
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform;
+}
+
+.bottom-sheet-closed {
+  transform: translateY(100%);
+}
+
+.bottom-sheet-open {
+  transform: translateY(0);
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Pull to Refresh
+   ══════════════════════════════════════════════════════════════════════════════ */
+.pull-indicator {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--obs-surface);
+  border: 2px solid var(--obs-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 60;
+  transition: transform 0.2s ease;
+}
+
+.pull-indicator-refreshing {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: translateX(-50%) rotate(0deg); }
+  to { transform: translateX(-50%) rotate(360deg); }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Android Touch Feedback
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (pointer: coarse) {
+  button, 
+  [role="button"],
+  .clickable {
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+  }
+
+  button:active,
+  [role="button"]:active,
+  .clickable:active {
+    transform: scale(0.98);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Excalidraw Canvas Styles
+   ══════════════════════════════════════════════════════════════════════════════ */
+.excalidraw-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: var(--obs-bg);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.excalidraw-canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.excalidraw-toolbar {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: 16px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: var(--obs-surface);
+  border: 1px solid var(--obs-border);
+  border-radius: 16px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  z-index: 10;
+}
+
+.excalidraw-toolbar button {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
+  color: var(--obs-muted);
+  transition: all 0.15s ease;
+}
+
+.excalidraw-toolbar button:hover,
+.excalidraw-toolbar button:active {
+  background: rgba(255,255,255,0.05);
+  color: var(--obs-text);
+}
+
+.excalidraw-toolbar button.active {
+  background: var(--obs-accent);
+  color: #fff;
+}
+
+@media (max-width: 767px) {
+  .excalidraw-toolbar {
+    bottom: 96px;
+    padding: 6px 8px;
+    gap: 2px;
+  }
+  .excalidraw-toolbar button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Markdown Preview Mobile
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .markdown-preview {
+    padding: 16px;
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .markdown-preview h1 { font-size: 1.625rem; }
+  .markdown-preview h2 { font-size: 1.375rem; }
+  .markdown-preview h3 { font-size: 1.125rem; }
+  .markdown-preview pre {
+    font-size: 13px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .markdown-preview table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .markdown-preview img {
+    max-width: 100%;
+    height: auto;
+  }
+  .markdown-preview blockquote {
+    margin-left: 0;
+    padding-left: 12px;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Graph View Mobile
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .graph-controls {
+    position: absolute;
+    bottom: 96px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .graph-legend {
+    display: none;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Editor Mobile
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (max-width: 767px) {
+  .editor-textarea {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    padding: 16px;
+  }
+  .editor-toolbar {
+    padding: 8px;
+    gap: 4px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .editor-toolbar::-webkit-scrollbar {
+    display: none;
+  }
+  .editor-toolbar button {
+    min-width: 40px;
+    height: 40px;
+    flex-shrink: 0;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Animations
+   ══════════════════════════════════════════════════════════════════════════════ */
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideInLeft {
+  from { opacity: 0; transform: translateX(-20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(20px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.animate-fade-in { animation: fadeIn 0.2s ease; }
+.animate-slide-up { animation: slideUp 0.25s ease; }
+.animate-slide-left { animation: slideInLeft 0.25s ease; }
+.animate-slide-right { animation: slideInRight 0.25s ease; }
+.animate-scale-in { animation: scaleIn 0.2s ease; }
+.animate-pulse { animation: pulse 2s infinite; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--obs-surface) 25%, var(--obs-surface-2) 50%, var(--obs-surface) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Marketplace Card Styles
+   ══════════════════════════════════════════════════════════════════════════════ */
+.marketplace-card {
+  background: var(--obs-surface);
+  border: 1px solid var(--obs-border);
+  border-radius: 16px;
+  padding: 16px;
+  transition: all 0.2s ease;
+}
+
+.marketplace-card:hover,
+.marketplace-card:active {
+  border-color: var(--obs-accent);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+}
+
+@media (pointer: coarse) {
+  .marketplace-card:active {
+    transform: scale(0.98);
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Focus states for accessibility
+   ══════════════════════════════════════════════════════════════════════════════ */
+:focus-visible {
+  outline: 2px solid var(--obs-accent);
+  outline-offset: 2px;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--obs-accent);
+  outline-offset: 2px;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Reduced Motion
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Print styles
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media print {
+  .mobile-bottom-nav,
+  .mobile-header,
+  .excalidraw-toolbar,
+  .mobile-drawer,
+  .bottom-sheet {
+    display: none !important;
+  }
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Overscroll Behavior
+   ══════════════════════════════════════════════════════════════════════════════ */
+.overscroll-contain {
+  overscroll-behavior: contain;
+}
+
+.overscroll-none {
+  overscroll-behavior: none;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Android Navigation Bar Color (meta theme-color fallback)
+   ══════════════════════════════════════════════════════════════════════════════ */
+@supports (height: 100dvh) {
+  html, body {
+    height: 100dvh;
+  }
+}
+
+/* ─── Hover preview compact styles ──────────────────────────── */
+.hover-preview-body .hover-preview-content > *:first-child {
+  margin-top: 0 !important;
+  padding-top: 0 !important;
+}
+.hover-preview-body .hover-preview-content h1,
+.hover-preview-body .hover-preview-content h2,
+.hover-preview-body .hover-preview-content h3,
+.hover-preview-body .hover-preview-content h4,
+.hover-preview-body .hover-preview-content h5,
+.hover-preview-body .hover-preview-content h6 {
+  margin-top: 0.3em !important;
+  margin-bottom: 0.2em !important;
+  font-size: 1em !important;
+  line-height: 1.3 !important;
+}
+.hover-preview-body .hover-preview-content p {
+  margin-top: 0 !important;
+  margin-bottom: 0.35em !important;
+}
+.hover-preview-body .hover-preview-content ul,
+.hover-preview-body .hover-preview-content ol {
+  margin-top: 0 !important;
+  margin-bottom: 0.3em !important;
+  padding-left: 1.2em !important;
+}
+.hover-preview-body .hover-preview-content li {
+  margin-bottom: 0.1em !important;
+}
+.hover-preview-body .hover-preview-content pre {
+  margin: 0.3em 0 !important;
+  padding: 0.4em 0.6em !important;
+  font-size: 0.9em !important;
+}
+.hover-preview-body .hover-preview-content blockquote {
+  margin: 0.3em 0 !important;
+  padding: 0.2em 0.6em !important;
+}

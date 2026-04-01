@@ -1,0 +1,850 @@
+"use client";
+
+import React, { useState, useRef, useEffect, useCallback } from "react";
+import {
+  Plus, FileText, Square, Type, Trash2, Move, ZoomIn, ZoomOut,
+  Maximize2, GripVertical, ArrowRight, Palette, X, Link2
+} from "lucide-react";
+import { Note } from "./data";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface CanvasCard {
+  id: string;
+  type: "note" | "text" | "media";
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  content: string;
+  noteId?: string;
+  color?: string;
+}
+
+interface CanvasConnection {
+  id: string;
+  fromId: string;
+  toId: string;
+  fromSide?: "top" | "right" | "bottom" | "left";
+  toSide?: "top" | "right" | "bottom" | "left";
+  color?: string;
+}
+
+interface CanvasGroup {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  label: string;
+  color: string;
+}
+
+interface CanvasState {
+  cards: CanvasCard[];
+  connections: CanvasConnection[];
+  groups: CanvasGroup[];
+  zoom: number;
+  panX: number;
+  panY: number;
+}
+
+interface CanvasViewProps {
+  notes: Note[];
+  onNoteClick?: (id: string) => void;
+}
+
+const COLORS = [
+  "#cdd6f4", "#89b4fa", "#a6e3a1", "#f9e2af", "#fab387",
+  "#f38ba8", "#cba6f7", "#74c7ec", "#94e2d5",
+];
+
+const INITIAL_CANVAS: CanvasState = {
+  cards: [
+    {
+      id: "card-1",
+      type: "note",
+      x: 100,
+      y: 100,
+      width: 240,
+      height: 160,
+      content: "Welcome to Canvas",
+      noteId: undefined,
+    },
+    {
+      id: "card-2",
+      type: "text",
+      x: 400,
+      y: 120,
+      width: 200,
+      height: 100,
+      content: "This is a text card. Click to edit.",
+      color: "#89b4fa",
+    },
+    {
+      id: "card-3",
+      type: "note",
+      x: 250,
+      y: 320,
+      width: 200,
+      height: 120,
+      content: "Connected Ideas",
+    },
+  ],
+  connections: [
+    { id: "conn-1", fromId: "card-1", toId: "card-2", fromSide: "right", toSide: "left" },
+    { id: "conn-2", fromId: "card-1", toId: "card-3", fromSide: "bottom", toSide: "top" },
+  ],
+  groups: [
+    {
+      id: "group-1",
+      x: 80,
+      y: 80,
+      width: 300,
+      height: 380,
+      label: "Main Ideas",
+      color: "rgba(124,106,247,0.15)",
+    },
+  ],
+  zoom: 1,
+  panX: 0,
+  panY: 0,
+};
+
+// ─── Helper Functions ─────────────────────────────────────────────────────────
+
+function getAnchorPoint(card: CanvasCard, side: "top" | "right" | "bottom" | "left") {
+  switch (side) {
+    case "top":
+      return { x: card.x + card.width / 2, y: card.y };
+    case "bottom":
+      return { x: card.x + card.width / 2, y: card.y + card.height };
+    case "left":
+      return { x: card.x, y: card.y + card.height / 2 };
+    case "right":
+      return { x: card.x + card.width, y: card.y + card.height / 2 };
+  }
+}
+
+function drawConnection(
+  ctx: CanvasRenderingContext2D,
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  color: string = "rgba(124,106,247,0.6)",
+  isSelected: boolean = false
+) {
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+
+  // Bezier curve
+  const midX = (from.x + to.x) / 2;
+  ctx.bezierCurveTo(midX, from.y, midX, to.y, to.x, to.y);
+
+  ctx.strokeStyle = isSelected ? "#7c6af7" : color;
+  ctx.lineWidth = isSelected ? 2.5 : 1.5;
+  ctx.stroke();
+
+  // Arrow head
+  const angle = Math.atan2(to.y - from.y, to.x - from.x);
+  const arrowSize = 8;
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(
+    to.x - arrowSize * Math.cos(angle - Math.PI / 6),
+    to.y - arrowSize * Math.sin(angle - Math.PI / 6)
+  );
+  ctx.lineTo(
+    to.x - arrowSize * Math.cos(angle + Math.PI / 6),
+    to.y - arrowSize * Math.sin(angle + Math.PI / 6)
+  );
+  ctx.closePath();
+  ctx.fillStyle = isSelected ? "#7c6af7" : color;
+  ctx.fill();
+}
+
+// ─── Canvas Card Component ────────────────────────────────────────────────────
+
+function CanvasCardComponent({
+  card,
+  isSelected,
+  zoom,
+  onSelect,
+  onDragStart,
+  onResize,
+  onContentChange,
+  onDelete,
+  onNoteClick,
+  note,
+}: {
+  card: CanvasCard;
+  isSelected: boolean;
+  zoom: number;
+  onSelect: () => void;
+  onDragStart: (e: React.MouseEvent) => void;
+  onResize: (width: number, height: number) => void;
+  onContentChange: (content: string) => void;
+  onDelete: () => void;
+  onNoteClick?: (id: string) => void;
+  note?: Note;
+}) {
+  const [editing, setEditing] = useState(false);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (editing && textareaRef.current) {
+      textareaRef.current.focus();
+      textareaRef.current.select();
+    }
+  }, [editing]);
+
+  const handleDoubleClick = () => {
+    if (card.type === "note" && card.noteId && onNoteClick) {
+      onNoteClick(card.noteId);
+    } else {
+      setEditing(true);
+    }
+  };
+
+  const content = card.noteId && note ? note.content.slice(0, 200) : card.content;
+  const title = card.noteId && note ? note.title : undefined;
+
+  return (
+    <div
+      className="absolute rounded-xl shadow-xl overflow-hidden transition-shadow"
+      style={{
+        left: card.x * zoom,
+        top: card.y * zoom,
+        width: card.width * zoom,
+        height: card.height * zoom,
+        background: "var(--color-obsidian-surface)",
+        border: isSelected
+          ? "2px solid var(--color-obsidian-accent)"
+          : "1px solid var(--color-obsidian-border)",
+        boxShadow: isSelected ? "0 0 0 3px rgba(124,106,247,0.2)" : undefined,
+        zIndex: isSelected ? 10 : 1,
+      }}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      onMouseDown={onDragStart}
+      onDoubleClick={handleDoubleClick}
+    >
+      {/* Header */}
+      <div
+        className="flex items-center gap-2 px-3 py-2 cursor-move"
+        style={{
+          borderBottom: "1px solid var(--color-obsidian-border)",
+          background: card.color ? `${card.color}15` : "var(--color-obsidian-bg)",
+        }}
+      >
+        <GripVertical size={12} style={{ color: "var(--color-obsidian-muted-text)" }} />
+        {card.type === "note" ? (
+          <FileText size={12} style={{ color: card.color || "var(--color-obsidian-link)" }} />
+        ) : card.type === "text" ? (
+          <Type size={12} style={{ color: card.color || "var(--color-obsidian-accent-soft)" }} />
+        ) : (
+          <Square size={12} style={{ color: card.color || "var(--color-obsidian-muted-text)" }} />
+        )}
+        <span
+          className="flex-1 text-xs font-medium truncate"
+          style={{ color: "var(--color-obsidian-text)" }}
+        >
+          {title || (card.type === "note" ? "Note Card" : card.type === "text" ? "Text" : "Media")}
+        </span>
+        {isSelected && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(); }}
+            className="p-0.5 rounded hover:bg-white/10"
+          >
+            <X size={10} style={{ color: "var(--color-obsidian-muted-text)" }} />
+          </button>
+        )}
+      </div>
+
+      {/* Content */}
+      <div className="p-3 overflow-hidden h-full">
+        {editing ? (
+          <textarea
+            ref={textareaRef}
+            value={card.content}
+            onChange={(e) => onContentChange(e.target.value)}
+            onBlur={() => setEditing(false)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") setEditing(false);
+            }}
+            className="w-full h-full bg-transparent outline-none resize-none text-xs"
+            style={{
+              color: "var(--color-obsidian-text)",
+              fontFamily: "var(--font-sans)",
+            }}
+          />
+        ) : (
+          <p
+            className="text-xs leading-relaxed"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+          >
+            {content}
+            {card.noteId && note && note.content.length > 200 && "…"}
+          </p>
+        )}
+      </div>
+
+      {/* Resize handle */}
+      {isSelected && (
+        <div
+          className="absolute bottom-0 right-0 w-4 h-4 cursor-se-resize"
+          style={{ background: "var(--color-obsidian-accent)", borderRadius: "4px 0 8px 0" }}
+          onMouseDown={(e) => {
+            e.stopPropagation();
+            const startX = e.clientX;
+            const startY = e.clientY;
+            const startW = card.width;
+            const startH = card.height;
+
+            const handleMove = (moveE: MouseEvent) => {
+              const dx = (moveE.clientX - startX) / zoom;
+              const dy = (moveE.clientY - startY) / zoom;
+              onResize(Math.max(120, startW + dx), Math.max(80, startH + dy));
+            };
+
+            const handleUp = () => {
+              window.removeEventListener("mousemove", handleMove);
+              window.removeEventListener("mouseup", handleUp);
+            };
+
+            window.addEventListener("mousemove", handleMove);
+            window.addEventListener("mouseup", handleUp);
+          }}
+        />
+      )}
+
+      {/* Connection anchors */}
+      {isSelected && (
+        <>
+          {(["top", "right", "bottom", "left"] as const).map((side) => {
+            const pos = getAnchorPoint({ ...card, x: 0, y: 0, width: card.width * zoom, height: card.height * zoom }, side);
+            return (
+              <div
+                key={side}
+                className="absolute w-3 h-3 rounded-full cursor-crosshair"
+                style={{
+                  left: pos.x - 6,
+                  top: pos.y - 6,
+                  background: "var(--color-obsidian-accent)",
+                  border: "2px solid #fff",
+                }}
+                title="Drag to connect"
+              />
+            );
+          })}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── Canvas Group Component ───────────────────────────────────────────────────
+
+function CanvasGroupComponent({
+  group,
+  zoom,
+  isSelected,
+  onSelect,
+  onDragStart,
+  onLabelChange,
+}: {
+  group: CanvasGroup;
+  zoom: number;
+  isSelected: boolean;
+  onSelect: () => void;
+  onDragStart: (e: React.MouseEvent) => void;
+  onLabelChange: (label: string) => void;
+}) {
+  const [editingLabel, setEditingLabel] = useState(false);
+
+  return (
+    <div
+      className="absolute rounded-2xl transition-all"
+      style={{
+        left: group.x * zoom,
+        top: group.y * zoom,
+        width: group.width * zoom,
+        height: group.height * zoom,
+        background: group.color,
+        border: isSelected ? "2px dashed var(--color-obsidian-accent)" : "1px dashed var(--color-obsidian-border)",
+        zIndex: 0,
+      }}
+      onClick={(e) => { e.stopPropagation(); onSelect(); }}
+      onMouseDown={onDragStart}
+    >
+      {/* Label */}
+      <div
+        className="absolute -top-6 left-2 px-2 py-0.5 rounded text-xs font-medium"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          color: "var(--color-obsidian-text)",
+        }}
+        onDoubleClick={() => setEditingLabel(true)}
+      >
+        {editingLabel ? (
+          <input
+            autoFocus
+            value={group.label}
+            onChange={(e) => onLabelChange(e.target.value)}
+            onBlur={() => setEditingLabel(false)}
+            onKeyDown={(e) => e.key === "Enter" && setEditingLabel(false)}
+            className="bg-transparent outline-none w-24"
+            style={{ color: "var(--color-obsidian-text)" }}
+          />
+        ) : (
+          group.label
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── Toolbar ──────────────────────────────────────────────────────────────────
+
+function CanvasToolbar({
+  zoom,
+  onZoomIn,
+  onZoomOut,
+  onFitView,
+  onAddCard,
+  onAddGroup,
+  selectedColor,
+  onColorChange,
+}: {
+  zoom: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onFitView: () => void;
+  onAddCard: (type: "note" | "text") => void;
+  onAddGroup: () => void;
+  selectedColor: string;
+  onColorChange: (color: string) => void;
+}) {
+  const [showColors, setShowColors] = useState(false);
+
+  return (
+    <div
+      className="absolute bottom-4 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-1.5 rounded-xl shadow-xl z-20"
+      style={{
+        background: "var(--color-obsidian-surface)",
+        border: "1px solid var(--color-obsidian-border)",
+      }}
+    >
+      {/* Add buttons */}
+      <button
+        onClick={() => onAddCard("note")}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-text)" }}
+        title="Add note card"
+      >
+        <FileText size={13} />
+        <span className="hidden sm:inline">Note</span>
+      </button>
+      <button
+        onClick={() => onAddCard("text")}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-text)" }}
+        title="Add text card"
+      >
+        <Type size={13} />
+        <span className="hidden sm:inline">Text</span>
+      </button>
+      <button
+        onClick={onAddGroup}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-text)" }}
+        title="Add group"
+      >
+        <Square size={13} />
+        <span className="hidden sm:inline">Group</span>
+      </button>
+
+      <div className="w-px h-5 mx-1" style={{ background: "var(--color-obsidian-border)" }} />
+
+      {/* Color picker */}
+      <div className="relative">
+        <button
+          onClick={() => setShowColors((v) => !v)}
+          className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+          title="Color"
+        >
+          <div
+            className="w-4 h-4 rounded"
+            style={{ background: selectedColor, border: "1px solid rgba(255,255,255,0.2)" }}
+          />
+        </button>
+        {showColors && (
+          <div
+            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-lg shadow-xl grid grid-cols-5 gap-1"
+            style={{
+              background: "var(--color-obsidian-surface)",
+              border: "1px solid var(--color-obsidian-border)",
+            }}
+          >
+            {COLORS.map((c) => (
+              <button
+                key={c}
+                onClick={() => { onColorChange(c); setShowColors(false); }}
+                className="w-5 h-5 rounded transition-transform hover:scale-110"
+                style={{
+                  background: c,
+                  border: selectedColor === c ? "2px solid #fff" : "1px solid rgba(255,255,255,0.1)",
+                }}
+              />
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="w-px h-5 mx-1" style={{ background: "var(--color-obsidian-border)" }} />
+
+      {/* Zoom controls */}
+      <button
+        onClick={onZoomOut}
+        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-muted-text)" }}
+        title="Zoom out"
+      >
+        <ZoomOut size={14} />
+      </button>
+      <span
+        className="text-xs w-10 text-center"
+        style={{ color: "var(--color-obsidian-text)" }}
+      >
+        {Math.round(zoom * 100)}%
+      </span>
+      <button
+        onClick={onZoomIn}
+        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-muted-text)" }}
+        title="Zoom in"
+      >
+        <ZoomIn size={14} />
+      </button>
+      <button
+        onClick={onFitView}
+        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        style={{ color: "var(--color-obsidian-muted-text)" }}
+        title="Fit view"
+      >
+        <Maximize2 size={14} />
+      </button>
+    </div>
+  );
+}
+
+// ─── Main Canvas View ─────────────────────────────────────────────────────────
+
+export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
+  const [canvas, setCanvas] = useState<CanvasState>(INITIAL_CANVAS);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedType, setSelectedType] = useState<"card" | "group" | null>(null);
+  const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; objX: number; objY: number } | null>(null);
+  const [activeColor, setActiveColor] = useState(COLORS[0]);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const connectionsCanvasRef = useRef<HTMLCanvasElement>(null);
+
+  // Draw connections
+  useEffect(() => {
+    const cnv = connectionsCanvasRef.current;
+    const container = containerRef.current;
+    if (!cnv || !container) return;
+
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    cnv.width = rect.width * dpr;
+    cnv.height = rect.height * dpr;
+    cnv.style.width = `${rect.width}px`;
+    cnv.style.height = `${rect.height}px`;
+
+    const ctx = cnv.getContext("2d");
+    if (!ctx) return;
+
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, rect.width, rect.height);
+
+    canvas.connections.forEach((conn) => {
+      const fromCard = canvas.cards.find((c) => c.id === conn.fromId);
+      const toCard = canvas.cards.find((c) => c.id === conn.toId);
+      if (!fromCard || !toCard) return;
+
+      const fromPos = getAnchorPoint(
+        { ...fromCard, x: fromCard.x * canvas.zoom, y: fromCard.y * canvas.zoom, width: fromCard.width * canvas.zoom, height: fromCard.height * canvas.zoom },
+        conn.fromSide || "right"
+      );
+      const toPos = getAnchorPoint(
+        { ...toCard, x: toCard.x * canvas.zoom, y: toCard.y * canvas.zoom, width: toCard.width * canvas.zoom, height: toCard.height * canvas.zoom },
+        conn.toSide || "left"
+      );
+
+      drawConnection(ctx, fromPos, toPos, conn.color);
+    });
+  }, [canvas]);
+
+  // Pan handling
+  const handlePan = useCallback((e: React.MouseEvent) => {
+    if (e.buttons !== 1 || dragging) return;
+
+    const handleMove = (moveE: MouseEvent) => {
+      setCanvas((prev) => ({
+        ...prev,
+        panX: prev.panX + moveE.movementX,
+        panY: prev.panY + moveE.movementY,
+      }));
+    };
+
+    const handleUp = () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+  }, [dragging]);
+
+  // Drag card/group
+  const startDrag = (id: string, type: "card" | "group", e: React.MouseEvent) => {
+    e.stopPropagation();
+    const obj = type === "card"
+      ? canvas.cards.find((c) => c.id === id)
+      : canvas.groups.find((g) => g.id === id);
+    if (!obj) return;
+
+    setDragging({
+      id,
+      startX: e.clientX,
+      startY: e.clientY,
+      objX: obj.x,
+      objY: obj.y,
+    });
+    setSelectedId(id);
+    setSelectedType(type);
+  };
+
+  useEffect(() => {
+    if (!dragging) return;
+
+    const handleMove = (e: MouseEvent) => {
+      const dx = (e.clientX - dragging.startX) / canvas.zoom;
+      const dy = (e.clientY - dragging.startY) / canvas.zoom;
+
+      if (selectedType === "card") {
+        setCanvas((prev) => ({
+          ...prev,
+          cards: prev.cards.map((c) =>
+            c.id === dragging.id ? { ...c, x: dragging.objX + dx, y: dragging.objY + dy } : c
+          ),
+        }));
+      } else {
+        setCanvas((prev) => ({
+          ...prev,
+          groups: prev.groups.map((g) =>
+            g.id === dragging.id ? { ...g, x: dragging.objX + dx, y: dragging.objY + dy } : g
+          ),
+        }));
+      }
+    };
+
+    const handleUp = () => setDragging(null);
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [dragging, canvas.zoom, selectedType]);
+
+  // Zoom
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setCanvas((prev) => ({
+      ...prev,
+      zoom: Math.min(2, Math.max(0.25, prev.zoom * delta)),
+    }));
+  }, []);
+
+  // Add card
+  const addCard = (type: "note" | "text") => {
+    const id = `card-${Date.now()}`;
+    const newCard: CanvasCard = {
+      id,
+      type,
+      x: 200 + Math.random() * 100,
+      y: 200 + Math.random() * 100,
+      width: type === "text" ? 180 : 220,
+      height: type === "text" ? 80 : 140,
+      content: type === "text" ? "New text" : "New note card",
+      color: activeColor,
+    };
+    setCanvas((prev) => ({ ...prev, cards: [...prev.cards, newCard] }));
+    setSelectedId(id);
+    setSelectedType("card");
+  };
+
+  // Add group
+  const addGroup = () => {
+    const id = `group-${Date.now()}`;
+    const newGroup: CanvasGroup = {
+      id,
+      x: 150 + Math.random() * 100,
+      y: 150 + Math.random() * 100,
+      width: 280,
+      height: 200,
+      label: "New Group",
+      color: `${activeColor}20`,
+    };
+    setCanvas((prev) => ({ ...prev, groups: [...prev.groups, newGroup] }));
+    setSelectedId(id);
+    setSelectedType("group");
+  };
+
+  // Delete selected
+  const deleteSelected = () => {
+    if (!selectedId) return;
+    if (selectedType === "card") {
+      setCanvas((prev) => ({
+        ...prev,
+        cards: prev.cards.filter((c) => c.id !== selectedId),
+        connections: prev.connections.filter((conn) => conn.fromId !== selectedId && conn.toId !== selectedId),
+      }));
+    } else {
+      setCanvas((prev) => ({
+        ...prev,
+        groups: prev.groups.filter((g) => g.id !== selectedId),
+      }));
+    }
+    setSelectedId(null);
+    setSelectedType(null);
+  };
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        if (selectedId && !document.activeElement?.matches("input, textarea")) {
+          deleteSelected();
+        }
+      }
+      if (e.key === "Escape") {
+        setSelectedId(null);
+        setSelectedType(null);
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [selectedId]);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative w-full h-full overflow-hidden"
+      style={{ background: "var(--color-obsidian-bg)" }}
+      onMouseDown={handlePan}
+      onWheel={handleWheel}
+      onClick={() => { setSelectedId(null); setSelectedType(null); }}
+    >
+      {/* Grid background */}
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `
+            linear-gradient(rgba(124,106,247,0.05) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(124,106,247,0.05) 1px, transparent 1px)
+          `,
+          backgroundSize: `${20 * canvas.zoom}px ${20 * canvas.zoom}px`,
+          backgroundPosition: `${canvas.panX}px ${canvas.panY}px`,
+        }}
+      />
+
+      {/* Connections canvas */}
+      <canvas
+        ref={connectionsCanvasRef}
+        className="absolute inset-0 pointer-events-none"
+      />
+
+      {/* Transform container */}
+      <div
+        className="absolute"
+        style={{
+          transform: `translate(${canvas.panX}px, ${canvas.panY}px)`,
+        }}
+      >
+        {/* Groups */}
+        {canvas.groups.map((group) => (
+          <CanvasGroupComponent
+            key={group.id}
+            group={group}
+            zoom={canvas.zoom}
+            isSelected={selectedId === group.id}
+            onSelect={() => { setSelectedId(group.id); setSelectedType("group"); }}
+            onDragStart={(e) => startDrag(group.id, "group", e)}
+            onLabelChange={(label) =>
+              setCanvas((prev) => ({
+                ...prev,
+                groups: prev.groups.map((g) => (g.id === group.id ? { ...g, label } : g)),
+              }))
+            }
+          />
+        ))}
+
+        {/* Cards */}
+        {canvas.cards.map((card) => (
+          <CanvasCardComponent
+            key={card.id}
+            card={card}
+            isSelected={selectedId === card.id}
+            zoom={canvas.zoom}
+            onSelect={() => { setSelectedId(card.id); setSelectedType("card"); }}
+            onDragStart={(e) => startDrag(card.id, "card", e)}
+            onResize={(width, height) =>
+              setCanvas((prev) => ({
+                ...prev,
+                cards: prev.cards.map((c) => (c.id === card.id ? { ...c, width, height } : c)),
+              }))
+            }
+            onContentChange={(content) =>
+              setCanvas((prev) => ({
+                ...prev,
+                cards: prev.cards.map((c) => (c.id === card.id ? { ...c, content } : c)),
+              }))
+            }
+            onDelete={deleteSelected}
+            onNoteClick={onNoteClick}
+            note={card.noteId ? notes.find((n) => n.id === card.noteId) : undefined}
+          />
+        ))}
+      </div>
+
+      {/* Toolbar */}
+      <CanvasToolbar
+        zoom={canvas.zoom}
+        onZoomIn={() => setCanvas((prev) => ({ ...prev, zoom: Math.min(2, prev.zoom * 1.2) }))}
+        onZoomOut={() => setCanvas((prev) => ({ ...prev, zoom: Math.max(0.25, prev.zoom / 1.2) }))}
+        onFitView={() => setCanvas((prev) => ({ ...prev, zoom: 1, panX: 0, panY: 0 }))}
+        onAddCard={addCard}
+        onAddGroup={addGroup}
+        selectedColor={activeColor}
+        onColorChange={setActiveColor}
+      />
+
+      {/* Instructions */}
+      <div
+        className="absolute top-4 left-4 p-3 rounded-xl text-xs max-w-xs"
+        style={{
+          background: "rgba(0,0,0,0.6)",
+          backdropFilter: "blur(8px)",
+          color: "var(--color-obsidian-muted-text)",
+        }}
+      >
+        <p className="font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>Canvas View</p>
+        <p>Drag to pan. Scroll to zoom. Click cards to select. Double-click to edit.</p>
+      </div>
+    </div>
+  );
+}
