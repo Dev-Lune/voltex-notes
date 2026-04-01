@@ -82,7 +82,7 @@ function firestoreToNote(data: Record<string, unknown>): Note {
     content: (data.content as string) || "",
     type: (data.type as Note["type"]) || "markdown",
     folder: (data.folder as string) || "root",
-    tags: (data.tags as string[]) || [],
+    tags: Array.isArray(data.tags) ? data.tags : [],
     starred: (data.starred as boolean) || false,
     pinned: (data.pinned as boolean) || false,
     trashed: (data.trashed as boolean) || false,

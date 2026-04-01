@@ -962,7 +962,8 @@ export function countWords(text: string): number {
 export function getAllTags(notes: Note[]): { tag: string; count: number }[] {
   const tagCounts: Record<string, number> = {};
   notes.forEach((note) => {
-    note.tags.forEach((tag) => {
+    const tags = Array.isArray(note.tags) ? note.tags : [];
+    tags.forEach((tag) => {
       tagCounts[tag] = (tagCounts[tag] || 0) + 1;
     });
   });

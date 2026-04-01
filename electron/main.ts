@@ -104,8 +104,9 @@ function createWindow(port: number): void {
   })
 
   const url = `http://127.0.0.1:${port}`
-  log(`[window] Loading ${url}`)
-  mainWindow.loadURL(url)
+  const appUrl = `${url}/notes`
+  log(`[window] Loading ${appUrl}`)
+  mainWindow.loadURL(appUrl)
 
   mainWindow.webContents.on('did-fail-load', (_e, code, desc) => {
     log(`[window] did-fail-load: code=${code} desc=${desc}`)

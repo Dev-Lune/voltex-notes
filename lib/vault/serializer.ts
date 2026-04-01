@@ -124,7 +124,7 @@ export function markdownToNote(filePath: string, raw: string): Note {
     id: (data.id as string) || `note-${Date.now()}`,
     title: (data.title as string) || filename,
     content: content.trim(),
-    tags: (data.tags as string[]) || [],
+    tags: Array.isArray(data.tags) ? data.tags : [],
     folder: (data.folder as string) || 'root',
     createdAt: (data.createdAt as string) || new Date().toISOString(),
     updatedAt: (data.updatedAt as string) || new Date().toISOString(),
