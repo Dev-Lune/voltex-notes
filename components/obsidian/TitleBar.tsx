@@ -3,7 +3,7 @@
 import React from "react";
 import {
   PanelLeft, PanelRight, Settings, Command, Cloud, CloudOff,
-  RefreshCw, LogIn, ChevronLeft, ChevronRight
+  RefreshCw, LogIn, ChevronLeft, ChevronRight, Info
 } from "lucide-react";
 import { AppState } from "./data";
 
@@ -13,6 +13,8 @@ interface TitleBarProps {
   onOpenCommandPalette: () => void;
   onOpenSettings: () => void;
   onOpenAuth: () => void;
+  onOpenUserInfo: () => void;
+  onOpenWelcome: () => void;
   onNavigateBack: () => void;
   onNavigateForward: () => void;
 }
@@ -43,6 +45,8 @@ export default function TitleBar({
   onOpenCommandPalette,
   onOpenSettings,
   onOpenAuth,
+  onOpenUserInfo,
+  onOpenWelcome,
   onNavigateBack,
   onNavigateForward,
 }: TitleBarProps) {
@@ -179,6 +183,16 @@ export default function TitleBar({
         <Settings size={15} />
       </button>
 
+      {/* Welcome / features */}
+      <button
+        onClick={onOpenWelcome}
+        className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+        style={{ color: "var(--color-obsidian-muted-text)" }}
+        title="About Voltex Notes"
+      >
+        <Info size={15} />
+      </button>
+
       {/* Auth */}
       {!user ? (
         <button
@@ -194,7 +208,7 @@ export default function TitleBar({
         </button>
       ) : (
         <button
-          onClick={onOpenSettings}
+          onClick={onOpenUserInfo}
           className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-opacity hover:opacity-80"
           style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
           title={user.displayName}

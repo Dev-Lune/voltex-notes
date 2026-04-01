@@ -170,6 +170,19 @@
   .show-mobile-only { display: none !important; }
 }
 
+/* ══════════════════════════════════════════════════════════════════════════════
+   Small Desktop Responsive (768px–1100px)
+   ══════════════════════════════════════════════════════════════════════════════ */
+@media (min-width: 768px) and (max-width: 1100px) {
+  .markdown-preview {
+    padding: 16px 20px;
+  }
+
+  .editor-textarea {
+    padding: 12px 16px;
+  }
+}
+
 /* Touch-friendly tap targets (Android Material Design spec: 48dp) */
 @media (pointer: coarse) {
   .tap-target {

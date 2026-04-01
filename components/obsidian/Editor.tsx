@@ -7,7 +7,8 @@ import {
   Heading1, Heading2, Quote, Minus, CheckSquare, Hash, Pencil,
   CalendarDays, LayoutGrid, Search, Replace, ChevronDown, ChevronUp,
   CaseSensitive, Regex, FileText, Copy, Download, Clipboard, Trash2,
-  Table2, Check, Loader2
+  Table2, Check, Loader2, ArrowDown, ArrowRight, AlignLeft, AlignCenter,
+  AlignRight, RotateCcw, Rows3, Columns3,
 } from "lucide-react";
 import { Note, AppState, countWords, NoteType } from "./data";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -694,6 +695,425 @@ function TabBar({
   );
 }
 
+// ─── Table Editor Dialog ──────────────────────────────────────────────────────
+
+type TableAlign = "left" | "center" | "right";
+
+interface TableEditorDialogProps {
+  onInsert: (markdown: string) => void;
+  onClose: () => void;
+}
+
+function TableEditorDialog({ onInsert, onClose }: TableEditorDialogProps) {
+  const [headers, setHeaders] = useState<string[]>(["Header 1", "Header 2", "Header 3"]);
+  const [rows, setRows] = useState<string[][]>([
+    ["", "", ""],
+    ["", "", ""],
+  ]);
+  const [aligns, setAligns] = useState<TableAlign[]>(["left", "left", "left"]);
+  const [dirty, setDirty] = useState(false);
+  const [showDiscard, setShowDiscard] = useState(false);
+
+  const colCount = headers.length;
+
+  const markDirty = () => { if (!dirty) setDirty(true); };
+
+  const setHeader = (col: number, value: string) => {
+    setHeaders((h) => h.map((v, i) => (i === col ? value : v)));
+    markDirty();
+  };
+
+  const setCell = (row: number, col: number, value: string) => {
+    setRows((r) => r.map((rv, ri) => (ri === row ? rv.map((cv, ci) => (ci === col ? value : cv)) : rv)));
+    markDirty();
+  };
+
+  const setAlign = (col: number, align: TableAlign) => {
+    setAligns((a) => a.map((v, i) => (i === col ? align : v)));
+    markDirty();
+  };
+
+  const addColumn = () => {
+    setHeaders((h) => [...h, `Header ${h.length + 1}`]);
+    setRows((r) => r.map((rv) => [...rv, ""]));
+    setAligns((a) => [...a, "left"]);
+    markDirty();
+  };
+
+  const removeColumn = (col: number) => {
+    if (colCount <= 1) return;
+    setHeaders((h) => h.filter((_, i) => i !== col));
+    setRows((r) => r.map((rv) => rv.filter((_, i) => i !== col)));
+    setAligns((a) => a.filter((_, i) => i !== col));
+    markDirty();
+  };
+
+  const addRow = () => {
+    setRows((r) => [...r, Array(colCount).fill("")]);
+    markDirty();
+  };
+
+  const removeRow = (row: number) => {
+    if (rows.length <= 1) return;
+    setRows((r) => r.filter((_, i) => i !== row));
+    markDirty();
+  };
+
+  const resetTable = () => {
+    setHeaders(["Header 1", "Header 2", "Header 3"]);
+    setRows([["", "", ""], ["", "", ""]]);
+    setAligns(["left", "left", "left"]);
+    setDirty(false);
+  };
+
+  const buildMarkdown = (): string => {
+    const pad = (s: string, w: number, align: TableAlign) => {
+      const trimmed = s.trim() || " ";
+      const diff = Math.max(0, w - trimmed.length);
+      if (align === "center") {
+        const left = Math.floor(diff / 2);
+        return " ".repeat(left) + trimmed + " ".repeat(diff - left);
+      }
+      if (align === "right") return " ".repeat(diff) + trimmed;
+      return trimmed + " ".repeat(diff);
+    };
+
+    // Column widths
+    const widths = headers.map((h, ci) => {
+      const dataMax = rows.reduce((m, r) => Math.max(m, (r[ci] || "").trim().length), 0);
+      return Math.max(h.trim().length, dataMax, 3);
+    });
+
+    const sep = aligns.map((a, i) => {
+      const w = widths[i];
+      if (a === "center") return `:${"-".repeat(w - 2)}:`;
+      if (a === "right") return `${"-".repeat(w - 1)}:`;
+      return "-".repeat(w);
+    });
+
+    const headerLine = `| ${headers.map((h, i) => pad(h, widths[i], aligns[i])).join(" | ")} |`;
+    const sepLine = `| ${sep.join(" | ")} |`;
+    const dataLines = rows.map(
+      (r) => `| ${r.map((c, i) => pad(c, widths[i], aligns[i])).join(" | ")} |`
+    );
+
+    return `\n${headerLine}\n${sepLine}\n${dataLines.join("\n")}\n`;
+  };
+
+  const handleInsert = () => {
+    onInsert(buildMarkdown());
+  };
+
+  const handleClose = () => {
+    if (dirty) {
+      setShowDiscard(true);
+    } else {
+      onClose();
+    }
+  };
+
+  const alignIcon = (a: TableAlign) => {
+    if (a === "center") return AlignCenter;
+    if (a === "right") return AlignRight;
+    return AlignLeft;
+  };
+
+  const cycleAlign = (col: number) => {
+    const order: TableAlign[] = ["left", "center", "right"];
+    const cur = aligns[col];
+    const next = order[(order.indexOf(cur) + 1) % 3];
+    setAlign(col, next);
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)" }}
+      onClick={handleClose}
+    >
+      <div
+        className="relative w-full max-w-2xl mx-4 rounded-xl"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+          animation: "scaleIn 0.2s ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center justify-between px-5 py-3"
+          style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
+        >
+          <div className="flex items-center gap-2">
+            <Table2 size={16} style={{ color: "var(--color-obsidian-accent)" }} />
+            <span className="text-sm font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+              Table Editor
+            </span>
+            <span className="text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--color-obsidian-surface-2)", color: "var(--color-obsidian-muted-text)" }}>
+              {colCount} × {rows.length}
+            </span>
+          </div>
+          <button
+            onClick={handleClose}
+            className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+          >
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Toolbar */}
+        <div
+          className="flex items-center gap-1 px-4 py-2 flex-wrap"
+          style={{ borderBottom: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}
+        >
+          <button
+            onClick={addColumn}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs transition-colors hover:bg-white/10"
+            style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
+            title="Add column"
+          >
+            <Columns3 size={12} />
+            <Plus size={10} />
+          </button>
+          <button
+            onClick={addRow}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs transition-colors hover:bg-white/10"
+            style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
+            title="Add row"
+          >
+            <Rows3 size={12} />
+            <Plus size={10} />
+          </button>
+          <div className="h-4 w-px mx-1" style={{ background: "var(--color-obsidian-border)" }} />
+          <button
+            onClick={resetTable}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-md text-xs transition-colors hover:bg-white/10"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+            title="Reset table"
+          >
+            <RotateCcw size={12} />
+            Reset
+          </button>
+          <div className="flex-1" />
+          <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            Click align buttons to cycle ←  ↔  →
+          </span>
+        </div>
+
+        {/* Table grid */}
+        <div className="px-4 py-3 overflow-auto max-h-[50vh]">
+          <table className="w-full border-collapse">
+            {/* Column align buttons */}
+            <thead>
+              <tr>
+                <th className="w-8" />
+                {headers.map((_, ci) => {
+                  const AIcon = alignIcon(aligns[ci]);
+                  return (
+                    <th key={ci} className="px-1 pb-1">
+                      <button
+                        onClick={() => cycleAlign(ci)}
+                        className="w-full flex items-center justify-center p-1 rounded transition-colors hover:bg-white/10"
+                        style={{ color: "var(--color-obsidian-muted-text)" }}
+                        title={`Align: ${aligns[ci]}`}
+                      >
+                        <AIcon size={12} />
+                      </button>
+                    </th>
+                  );
+                })}
+                <th className="w-8" />
+              </tr>
+              {/* Headers row */}
+              <tr>
+                <th
+                  className="text-xs font-normal px-1 py-1"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                >
+                  H
+                </th>
+                {headers.map((h, ci) => (
+                  <th key={ci} className="px-1 py-1">
+                    <input
+                      value={h}
+                      onChange={(e) => setHeader(ci, e.target.value)}
+                      className="w-full px-2 py-1.5 rounded-md text-xs font-semibold outline-none"
+                      style={{
+                        background: "var(--color-obsidian-bg)",
+                        color: "var(--color-obsidian-text)",
+                        border: "1px solid var(--color-obsidian-border)",
+                      }}
+                    />
+                  </th>
+                ))}
+                <th className="px-1">
+                  {colCount > 1 && (
+                    <button
+                      onClick={() => removeColumn(colCount - 1)}
+                      className="p-1 rounded hover:bg-white/10 transition-colors"
+                      style={{ color: "#f38ba8" }}
+                      title="Remove last column"
+                    >
+                      <X size={12} />
+                    </button>
+                  )}
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row, ri) => (
+                <tr key={ri}>
+                  <td
+                    className="text-xs font-normal px-1 py-1 text-center"
+                    style={{ color: "var(--color-obsidian-muted-text)" }}
+                  >
+                    {ri + 1}
+                  </td>
+                  {row.map((cell, ci) => (
+                    <td key={ci} className="px-1 py-1">
+                      <input
+                        value={cell}
+                        onChange={(e) => setCell(ri, ci, e.target.value)}
+                        placeholder="—"
+                        className="w-full px-2 py-1.5 rounded-md text-xs outline-none placeholder:opacity-30"
+                        style={{
+                          background: "var(--color-obsidian-bg)",
+                          color: "var(--color-obsidian-text)",
+                          border: "1px solid var(--color-obsidian-border)",
+                        }}
+                      />
+                    </td>
+                  ))}
+                  <td className="px-1">
+                    {rows.length > 1 && (
+                      <button
+                        onClick={() => removeRow(ri)}
+                        className="p-1 rounded hover:bg-white/10 transition-colors"
+                        style={{ color: "#f38ba8" }}
+                        title="Remove row"
+                      >
+                        <X size={12} />
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+
+          {/* Quick add buttons at bottom / right */}
+          <div className="flex items-center gap-2 mt-2">
+            <button
+              onClick={addRow}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-white/5"
+              style={{ color: "var(--color-obsidian-muted-text)", border: "1px dashed var(--color-obsidian-border)" }}
+            >
+              <ArrowDown size={11} /> Add row
+            </button>
+            <button
+              onClick={addColumn}
+              className="flex items-center gap-1 px-3 py-1.5 rounded-md text-xs transition-colors hover:bg-white/5"
+              style={{ color: "var(--color-obsidian-muted-text)", border: "1px dashed var(--color-obsidian-border)" }}
+            >
+              <ArrowRight size={11} /> Add column
+            </button>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div
+          className="flex items-center justify-between px-5 py-3"
+          style={{ borderTop: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}
+        >
+          <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            Inserts as Markdown table
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleClose}
+              className="px-4 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
+              style={{
+                color: "var(--color-obsidian-text)",
+                border: "1px solid var(--color-obsidian-border)",
+              }}
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleInsert}
+              className="px-4 py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
+              style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+            >
+              Insert Table
+            </button>
+          </div>
+        </div>
+
+        {/* Discard confirmation overlay */}
+        {showDiscard && (
+          <div
+            className="absolute inset-0 z-50 flex items-center justify-center rounded-xl"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div
+              className="w-80 rounded-2xl p-6"
+              style={{
+                background: "var(--color-obsidian-bg)",
+                border: "1px solid var(--color-obsidian-border)",
+                boxShadow: "0 24px 64px rgba(0,0,0,0.5)",
+              }}
+            >
+              <div className="flex items-center gap-2.5 mb-2">
+                <div
+                  className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                  style={{ background: "rgba(243,139,168,0.15)" }}
+                >
+                  <RotateCcw size={15} style={{ color: "#f38ba8" }} />
+                </div>
+                <p className="text-sm font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+                  Unsaved changes
+                </p>
+              </div>
+              <p className="text-xs leading-relaxed mb-5 pl-[42px]" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Your table edits haven&apos;t been inserted yet. What would you like to do?
+              </p>
+              <div className="flex flex-col gap-2">
+                <button
+                  onClick={handleInsert}
+                  className="w-full py-2 rounded-lg text-xs font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                >
+                  Save &amp; Insert
+                </button>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowDiscard(false)}
+                    className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
+                    style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
+                  >
+                    Go Back
+                  </button>
+                  <button
+                    onClick={onClose}
+                    className="flex-1 py-2 rounded-lg text-xs font-medium transition-colors hover:bg-white/5"
+                    style={{ color: "#f38ba8", border: "1px solid rgba(243,139,168,0.3)" }}
+                  >
+                    Discard
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Toolbar ──────────────────────────────────────────────────────────────────
 
 function Toolbar({
@@ -725,8 +1145,10 @@ function Toolbar({
 }) {
   const isDrawing = note?.type === "drawing";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
+  const [tableDialogOpen, setTableDialogOpen] = useState(false);
 
   return (
+    <>
     <div
       className="flex items-center gap-1 px-3 py-1 shrink-0"
       style={{
@@ -813,7 +1235,7 @@ function Toolbar({
             title="Insert table"
             className="p-1.5 rounded hover:bg-white/10 transition-colors"
             style={{ color: "var(--color-obsidian-muted-text)" }}
-            onClick={() => onInsertText?.("\n| Header | Header | Header |\n| ------ | ------ | ------ |\n| Cell   | Cell   | Cell   |\n| Cell   | Cell   | Cell   |\n")}
+            onClick={() => setTableDialogOpen(true)}
           >
             <Table2 size={13} />
           </button>
@@ -934,6 +1356,14 @@ function Toolbar({
         New
       </button>
     </div>
+
+    {tableDialogOpen && (
+      <TableEditorDialog
+        onInsert={(md) => { onInsertText?.(md); setTableDialogOpen(false); }}
+        onClose={() => setTableDialogOpen(false)}
+      />
+    )}
+    </>
   );
 }
 

@@ -22,8 +22,17 @@ import {
   NewNoteMenu,
   useMobile,
   useSwipe,
+  useSmallDesktop,
+  useViewportWidth,
 } from "./MobileNav";
 import { SyncService } from "@/lib/firebase/sync";
+import {
+  X, Sparkles, FileEdit, Link2, Palette, Package,
+  Search as SearchIcon, CalendarDays as CalendarIcon,
+  FolderTree, History, Download, Command, Cloud,
+  Smartphone, BookOpen, FolderOpen, Check,
+  Info, Crown, Mail, User, Settings, LogIn, FileText,
+} from "lucide-react";
 
 const INITIAL_STATE: AppState = {
   notes: SAMPLE_NOTES,
@@ -61,13 +70,81 @@ export default function ObsidianApp() {
 
   // Mobile state
   const isMobile = useMobile();
+  const isSmallDesktop = useSmallDesktop();
+  const viewportWidth = useViewportWidth();
   const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
   const [mobileView, setMobileView] = useState<"home" | "search" | "graph" | "new" | "settings">("home");
   const [mobileNewNoteMenuOpen, setMobileNewNoteMenuOpen] = useState(false);
 
+  // Welcome / workspace setup state
+  const [welcomeModalOpen, setWelcomeModalOpen] = useState(false);
+  const [workspaceSetupOpen, setWorkspaceSetupOpen] = useState(false);
+  const [appReady, setAppReady] = useState(false);
+  const [userInfoOpen, setUserInfoOpen] = useState(false);
+
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
   }, []);
+
+  // First-run detection: show welcome modal and/or workspace setup
+  useEffect(() => {
+    try {
+      const welcomeDismissed = localStorage.getItem("voltex-welcome-dismissed");
+      const workspaceConfigured = localStorage.getItem("voltex-workspace-configured");
+
+      // If workspace was configured as "empty", initialize with blank state
+      if (workspaceConfigured === "empty") {
+        setState((prev) => {
+          // Only override if still using sample data (first mount)
+          if (prev.notes.length === SAMPLE_NOTES.length && prev.notes[0]?.id === SAMPLE_NOTES[0].id) {
+            const blankNote: Note = {
+              id: `note-${Date.now()}`,
+              title: "Untitled",
+              content: "# Untitled\n\nStart writing…",
+              tags: [],
+              folder: "root",
+              createdAt: new Date().toISOString().split("T")[0],
+              updatedAt: new Date().toISOString().split("T")[0],
+              starred: false,
+              wordCount: 0,
+              type: "markdown",
+            };
+            return {
+              ...prev,
+              notes: [blankNote],
+              folders: [{ id: "root", name: "Vault", parentId: null }],
+              activeNoteId: blankNote.id,
+              openNoteIds: [blankNote.id],
+            };
+          }
+          return prev;
+        });
+      }
+
+      if (!welcomeDismissed && !workspaceConfigured) {
+        // Brand new user — show welcome first
+        setWelcomeModalOpen(true);
+      } else if (welcomeDismissed && !workspaceConfigured) {
+        // Welcome was dismissed but workspace not configured yet
+        setWorkspaceSetupOpen(true);
+      } else {
+        setAppReady(true);
+      }
+    } catch {
+      setAppReady(true);
+    }
+  }, []);
+
+  // Auto-collapse panels on small desktop viewports
+  useEffect(() => {
+    if (isMobile) return;
+    if (viewportWidth > 0 && viewportWidth < 1100) {
+      patch({ rightPanelOpen: false });
+    }
+    if (viewportWidth > 0 && viewportWidth < 900) {
+      patch({ sidebarCollapsed: true });
+    }
+  }, [viewportWidth, isMobile, patch]);
 
   // Apply theme + persist
   useEffect(() => {
@@ -715,9 +792,17 @@ export default function ObsidianApp() {
         // Toggle checkbox on current line (handled by Editor)
       }
       if (e.key === "Escape") {
+        if (welcomeModalOpen) {
+          setWelcomeModalOpen(false);
+          try { localStorage.setItem("voltex-welcome-dismissed", "true"); } catch { /* ignore */ }
+        }
+        if (workspaceSetupOpen) {
+          // Don't allow escape to skip workspace setup
+        }
         if (state.commandPaletteOpen) patch({ commandPaletteOpen: false });
         if (state.settingsOpen) patch({ settingsOpen: false });
         if (state.authModalOpen) patch({ authModalOpen: false });
+        if (userInfoOpen) setUserInfoOpen(false);
         if (isMobile) {
           setMobileDrawerOpen(false);
           setMobileNewNoteMenuOpen(false);
@@ -726,7 +811,7 @@ export default function ObsidianApp() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [state.commandPaletteOpen, state.settingsOpen, state.authModalOpen, state.sidebarCollapsed, state.activeNoteId, state.notes, patch, createNote, deleteNote, pushNoteToFirestore, isMobile]);
+  }, [state.commandPaletteOpen, state.settingsOpen, state.authModalOpen, state.sidebarCollapsed, state.activeNoteId, state.notes, patch, createNote, deleteNote, pushNoteToFirestore, isMobile, userInfoOpen, welcomeModalOpen, workspaceSetupOpen]);
 
   const activeNote = state.notes.find((n) => n.id === state.activeNoteId);
 
@@ -744,6 +829,8 @@ export default function ObsidianApp() {
           onOpenCommandPalette={() => patch({ commandPaletteOpen: true })}
           onOpenSettings={() => patch({ settingsOpen: true })}
           onOpenAuth={() => patch({ authModalOpen: true })}
+          onOpenUserInfo={() => setUserInfoOpen(true)}
+          onOpenWelcome={() => setWelcomeModalOpen(true)}
           onNavigateBack={navigateBack}
           onNavigateForward={navigateForward}
         />
@@ -776,7 +863,7 @@ export default function ObsidianApp() {
           <div
             className="shrink-0 hide-mobile"
             style={{
-              width: 264,
+              width: isSmallDesktop ? 220 : 264,
               borderRight: "1px solid var(--color-obsidian-border)",
               overflow: "visible",
               position: "relative",
@@ -800,7 +887,7 @@ export default function ObsidianApp() {
         )}
 
         {/* Center — editor or graph */}
-        <div className="flex-1 overflow-hidden" style={{ paddingBottom: isMobile ? 56 : 0 }}>
+        <div className="flex-1 overflow-hidden" style={{ paddingBottom: isMobile ? 56 : 0, minWidth: isMobile ? undefined : 400 }}>
           {state.mainView === "editor" ? (
             <Editor
               state={state}
@@ -836,7 +923,7 @@ export default function ObsidianApp() {
         {!isMobile && state.rightPanelOpen && (
           <div
             className="shrink-0 overflow-hidden hide-mobile"
-            style={{ width: 240 }}
+            style={{ width: isSmallDesktop ? 200 : 240 }}
           >
             <RightPanel
               state={state}
@@ -921,6 +1008,23 @@ export default function ObsidianApp() {
         />
       )}
 
+      {userInfoOpen && (
+        <UserInfoPanel
+          user={state.user}
+          notesCount={state.notes.filter((n) => !n.trashed).length}
+          syncStatus={state.syncStatus}
+          onClose={() => setUserInfoOpen(false)}
+          onSignIn={() => {
+            setUserInfoOpen(false);
+            patch({ authModalOpen: true });
+          }}
+          onOpenSettings={() => {
+            setUserInfoOpen(false);
+            patch({ settingsOpen: true });
+          }}
+        />
+      )}
+
       {state.authModalOpen && (
         <AuthModal
           onClose={() => patch({ authModalOpen: false })}
@@ -951,6 +1055,464 @@ export default function ObsidianApp() {
           onClose={() => patch({ marketplaceOpen: false })}
         />
       )}
+
+      {/* Welcome Modal */}
+      {welcomeModalOpen && (
+        <WelcomeModal
+          onDismiss={() => {
+            try { localStorage.setItem("voltex-welcome-dismissed", "true"); } catch { /* ignore */ }
+            setWelcomeModalOpen(false);
+            const configured = localStorage.getItem("voltex-workspace-configured");
+            if (!configured) {
+              setWorkspaceSetupOpen(true);
+            } else {
+              setAppReady(true);
+            }
+          }}
+          onSignIn={() => {
+            try { localStorage.setItem("voltex-welcome-dismissed", "true"); } catch { /* ignore */ }
+            setWelcomeModalOpen(false);
+            patch({ authModalOpen: true });
+            const configured = localStorage.getItem("voltex-workspace-configured");
+            if (!configured) {
+              setWorkspaceSetupOpen(true);
+            } else {
+              setAppReady(true);
+            }
+          }}
+        />
+      )}
+
+      {/* Workspace Setup Dialog */}
+      {workspaceSetupOpen && (
+        <WorkspaceSetupDialog
+          onSelect={(choice) => {
+            try { localStorage.setItem("voltex-workspace-configured", choice); } catch { /* ignore */ }
+            setWorkspaceSetupOpen(false);
+            if (choice === "empty") {
+              const blankNote: Note = {
+                id: `note-${Date.now()}`,
+                title: "Untitled",
+                content: "# Untitled\n\nStart writing…",
+                tags: [],
+                folder: "root",
+                createdAt: new Date().toISOString().split("T")[0],
+                updatedAt: new Date().toISOString().split("T")[0],
+                starred: false,
+                wordCount: 0,
+                type: "markdown",
+              };
+              setState((prev) => ({
+                ...prev,
+                notes: [blankNote],
+                folders: [{ id: "root", name: "Vault", parentId: null }],
+                activeNoteId: blankNote.id,
+                openNoteIds: [blankNote.id],
+              }));
+            }
+            setAppReady(true);
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── WelcomeModal (private sub-component) ─────────────────────────────────────
+
+const WELCOME_FEATURES = [
+  { icon: FileEdit, title: "Markdown Editor", desc: "Inline editor with live split preview and syntax highlighting" },
+  { icon: Link2, title: "Bidirectional Wikilinks", desc: "Connect notes with [[wikilinks]] and explore your knowledge graph" },
+  { icon: Palette, title: "9+ Themes", desc: "Dark & light themes with a custom color editor for full control" },
+  { icon: Package, title: "Plugin Marketplace", desc: "Excalidraw, Kanban, AI Assistant, and community plugins" },
+  { icon: SearchIcon, title: "Tags & Search", desc: "Tags, bookmarks, and full-text search across your entire vault" },
+  { icon: CalendarIcon, title: "Daily Notes", desc: "Templated daily journal entries with one-click creation" },
+  { icon: FolderTree, title: "Folder Organization", desc: "Drag-and-drop folder tree with nested hierarchy support" },
+  { icon: History, title: "Version History", desc: "Automatic snapshots with one-click rollback to any version" },
+  { icon: Download, title: "Export as ZIP", desc: "Download your entire vault as a portable ZIP archive" },
+  { icon: Command, title: "Keyboard Shortcuts", desc: "Ctrl+P command palette, Ctrl+N new note, and many more" },
+] as const;
+
+function WelcomeModal({ onDismiss, onSignIn }: { onDismiss: () => void; onSignIn: () => void }) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ backdropFilter: "blur(8px)", background: "rgba(0,0,0,0.6)" }}
+    >
+      <div
+        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          animation: "scaleIn 0.3s ease",
+        }}
+      >
+        {/* Close button */}
+        <button
+          onClick={onDismiss}
+          className="absolute top-4 right-4 p-2 rounded-lg transition-colors z-10 hover:bg-white/10"
+          style={{ color: "var(--color-obsidian-muted-text)" }}
+          aria-label="Close"
+        >
+          <X size={18} />
+        </button>
+
+        <div className="flex flex-col md:flex-row max-h-[85vh]">
+          {/* Left — Features */}
+          <div className="flex-1 p-6 md:p-8 overflow-y-auto" style={{ borderRight: "1px solid var(--color-obsidian-border)" }}>
+            {/* Mini hero */}
+            <div className="flex items-center gap-3 mb-5">
+              <div
+                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
+                style={{ background: "var(--color-obsidian-accent)" }}
+              >
+                <Sparkles size={20} color="#fff" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold leading-tight" style={{ color: "var(--color-obsidian-text)" }}>
+                  Welcome to Voltex Notes
+                </h1>
+                <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  Your personal knowledge base — supercharged
+                </p>
+              </div>
+            </div>
+
+            {/* Feature list */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {WELCOME_FEATURES.map((f) => (
+                <div
+                  key={f.title}
+                  className="flex items-start gap-2.5 p-2.5 rounded-lg"
+                  style={{ background: "var(--color-obsidian-bg)" }}
+                >
+                  <div
+                    className="shrink-0 mt-px p-1.5 rounded-md"
+                    style={{ background: "var(--color-obsidian-surface-2)" }}
+                  >
+                    <f.icon size={15} style={{ color: "var(--color-obsidian-accent)" }} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+                      {f.title}
+                    </p>
+                    <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                      {f.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            {/* Mobile callout */}
+            <div className="flex items-center gap-2 mt-4">
+              <Smartphone size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
+              <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Works beautifully on mobile with gestures and bottom nav
+              </p>
+            </div>
+          </div>
+
+          {/* Right — Account */}
+          <div
+            className="w-full md:w-72 shrink-0 p-6 md:p-8 flex flex-col justify-center"
+            style={{ background: "var(--color-obsidian-bg)" }}
+          >
+            <div className="flex flex-col items-center text-center">
+              <div
+                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                style={{ background: "var(--color-obsidian-surface-2)" }}
+              >
+                <Cloud size={26} style={{ color: "var(--color-obsidian-accent)" }} />
+              </div>
+              <h2 className="text-base font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+                Cloud Sync
+              </h2>
+              <p className="text-xs leading-relaxed mb-5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Sign in to sync your notes across all devices in real-time. Encrypted and private.
+              </p>
+
+              <button
+                onClick={onSignIn}
+                className="w-full px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-3"
+                style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+              >
+                Sign In
+              </button>
+              <button
+                onClick={onDismiss}
+                className="text-xs transition-opacity hover:opacity-80 mb-6"
+                style={{ color: "var(--color-obsidian-muted-text)" }}
+              >
+                Continue without account
+              </button>
+
+              <div className="w-full h-px mb-5" style={{ background: "var(--color-obsidian-border)" }} />
+
+              <button
+                onClick={onDismiss}
+                className="w-full px-6 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{
+                  background: "var(--color-obsidian-surface)",
+                  color: "var(--color-obsidian-text)",
+                  border: "1px solid var(--color-obsidian-border)",
+                }}
+              >
+                Get Started
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── WorkspaceSetupDialog (private sub-component) ─────────────────────────────
+
+function WorkspaceSetupDialog({ onSelect }: { onSelect: (choice: "docs" | "empty") => void }) {
+  const [selected, setSelected] = useState<"docs" | "empty" | null>(null);
+
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-center justify-center"
+      style={{ background: "rgba(0,0,0,0.6)" }}
+    >
+      <div
+        className="w-full max-w-xl mx-4 rounded-2xl"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          animation: "scaleIn 0.3s ease",
+        }}
+      >
+        <div className="p-8">
+          <h2 className="text-2xl font-bold text-center mb-2" style={{ color: "var(--color-obsidian-text)" }}>
+            Set Up Your Workspace
+          </h2>
+          <p className="text-sm text-center mb-6" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            Choose how you want to start your vault
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
+            {/* Option A: Documentation */}
+            <button
+              onClick={() => setSelected("docs")}
+              className="text-left p-5 rounded-xl transition-all"
+              style={{
+                background: "var(--color-obsidian-bg)",
+                border: selected === "docs"
+                  ? "2px solid var(--color-obsidian-accent)"
+                  : "2px solid var(--color-obsidian-border)",
+                boxShadow: selected === "docs"
+                  ? "0 0 20px rgba(59,142,245,0.15)"
+                  : "none",
+              }}
+            >
+              <div className="flex items-center gap-2 mb-3">
+                <BookOpen size={22} style={{ color: "var(--color-obsidian-accent)" }} />
+                <span
+                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
+                  style={{
+                    background: "rgba(59,142,245,0.15)",
+                    color: "var(--color-obsidian-accent)",
+                  }}
+                >
+                  Recommended
+                </span>
+              </div>
+              <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+                Start with Documentation
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Pre-load your workspace with guides, templates, and examples. Includes Getting Started, Markdown reference, and Wikilinks tutorial.
+              </p>
+              {selected === "docs" && (
+                <div className="mt-3 flex items-center gap-1" style={{ color: "var(--color-obsidian-accent)" }}>
+                  <Check size={16} />
+                  <span className="text-xs font-semibold">Selected</span>
+                </div>
+              )}
+            </button>
+
+            {/* Option B: Empty workspace */}
+            <button
+              onClick={() => setSelected("empty")}
+              className="text-left p-5 rounded-xl transition-all"
+              style={{
+                background: "var(--color-obsidian-bg)",
+                border: selected === "empty"
+                  ? "2px solid var(--color-obsidian-accent)"
+                  : "2px solid var(--color-obsidian-border)",
+                boxShadow: selected === "empty"
+                  ? "0 0 20px rgba(59,142,245,0.15)"
+                  : "none",
+              }}
+            >
+              <FolderOpen size={22} style={{ color: "var(--color-obsidian-accent)" }} className="mb-3" />
+              <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+                Start with Empty Workspace
+              </p>
+              <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Begin with a clean slate. Just an empty vault with a root folder — perfect if you know what you&#39;re doing or want to import your own notes.
+              </p>
+              {selected === "empty" && (
+                <div className="mt-3 flex items-center gap-1" style={{ color: "var(--color-obsidian-accent)" }}>
+                  <Check size={16} />
+                  <span className="text-xs font-semibold">Selected</span>
+                </div>
+              )}
+            </button>
+          </div>
+
+          <div className="text-center">
+            <button
+              onClick={() => selected && onSelect(selected)}
+              disabled={!selected}
+              className="px-8 py-3 rounded-xl text-base font-semibold transition-opacity"
+              style={{
+                background: selected ? "var(--color-obsidian-accent)" : "var(--color-obsidian-surface-2)",
+                color: selected ? "#fff" : "var(--color-obsidian-muted-text)",
+                cursor: selected ? "pointer" : "not-allowed",
+                opacity: selected ? 1 : 0.6,
+              }}
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── UserInfoPanel (private sub-component) ────────────────────────────────────
+
+interface UserInfoPanelProps {
+  user: AppState["user"];
+  notesCount: number;
+  syncStatus: AppState["syncStatus"];
+  onClose: () => void;
+  onSignIn: () => void;
+  onOpenSettings: () => void;
+}
+
+function UserInfoPanel({ user, notesCount, syncStatus, onClose, onSignIn, onOpenSettings }: UserInfoPanelProps) {
+  return (
+    <div
+      className="fixed inset-0 z-[200] flex items-start justify-end pt-12 pr-3"
+      onClick={onClose}
+    >
+      <div
+        className="w-80 rounded-xl overflow-hidden"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          boxShadow: "0 16px 48px rgba(0,0,0,0.4)",
+          animation: "scaleIn 0.15s ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div
+          className="px-5 pt-5 pb-4"
+          style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
+        >
+          {user ? (
+            <div className="flex items-center gap-3">
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
+                style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+              >
+                {user.displayName.charAt(0).toUpperCase()}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-semibold truncate" style={{ color: "var(--color-obsidian-text)" }}>
+                  {user.displayName}
+                </p>
+                <p className="text-xs truncate" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  {user.email}
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-3">
+              <div
+                className="w-11 h-11 rounded-full flex items-center justify-center shrink-0"
+                style={{ background: "var(--color-obsidian-surface-2)" }}
+              >
+                <User size={20} style={{ color: "var(--color-obsidian-muted-text)" }} />
+              </div>
+              <div>
+                <p className="text-sm font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+                  Guest User
+                </p>
+                <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  Not signed in
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Plan badge */}
+        <div className="px-5 py-3" style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+          <div
+            className="flex items-center gap-2 px-3 py-2 rounded-lg"
+            style={{ background: "rgba(59,142,245,0.1)" }}
+          >
+            <Crown size={16} style={{ color: "var(--color-obsidian-accent)" }} />
+            <div className="flex-1">
+              <p className="text-xs font-semibold" style={{ color: "var(--color-obsidian-accent)" }}>
+                Pro Plan
+              </p>
+              <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Free forever — all features unlocked
+              </p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="px-5 py-3" style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <FileText size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
+              <span className="text-xs" style={{ color: "var(--color-obsidian-text)" }}>
+                {notesCount} notes
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <Cloud size={14} style={{ color: syncStatus === "synced" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }} />
+              <span className="text-xs" style={{ color: "var(--color-obsidian-text)" }}>
+                {syncStatus === "synced" ? "Synced" : syncStatus === "syncing" ? "Syncing…" : syncStatus === "error" ? "Sync error" : "Offline"}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="px-3 py-2">
+          {!user && (
+            <button
+              onClick={onSignIn}
+              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:opacity-80"
+              style={{ color: "var(--color-obsidian-accent)" }}
+            >
+              <LogIn size={16} />
+              Sign in to sync your notes
+            </button>
+          )}
+          <button
+            onClick={onOpenSettings}
+            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm transition-colors hover:opacity-80"
+            style={{ color: "var(--color-obsidian-text)" }}
+          >
+            <Settings size={16} style={{ color: "var(--color-obsidian-muted-text)" }} />
+            Settings
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

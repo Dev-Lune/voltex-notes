@@ -644,6 +644,35 @@ export function useMobile() {
   return isMobile;
 }
 
+// ─── useSmallDesktop hook ─────────────────────────────────────────────────────
+
+export function useSmallDesktop() {
+  const [isSmallDesktop, setIsSmallDesktop] = useState(false);
+
+  useEffect(() => {
+    const mql = window.matchMedia("(min-width: 768px) and (max-width: 1200px)");
+    const update = () => setIsSmallDesktop(mql.matches);
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, []);
+
+  return isSmallDesktop;
+}
+
+export function useViewportWidth() {
+  const [width, setWidth] = useState(typeof window !== "undefined" ? window.innerWidth : 1440);
+
+  useEffect(() => {
+    const update = () => setWidth(window.innerWidth);
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+
+  return width;
+}
+
 // ─── Swipe gesture hook ───────────────────────────────────────────────────────
 
 interface SwipeHandlers {
