@@ -38,7 +38,7 @@ nsis:
   allowToChangeInstallationDirectory: true
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  license: build-resources/license.txt
+  license: build-resources/license.rtf
 
 linux:
   target:
