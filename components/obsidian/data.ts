@@ -25,6 +25,8 @@ export interface Note {
   drawingData?: string;
   /** Newest-first content history snapshots for restore */
   versionHistory?: NoteVersion[];
+  /** Absolute path to the .md file on disk (Electron only) */
+  filePath?: string;
 }
 export interface Folder {
   id: string;

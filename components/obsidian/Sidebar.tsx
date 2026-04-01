@@ -184,6 +184,7 @@ function FileTreeItem({
   const [renameVal, setRenameVal] = useState(note.title);
 
   const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData("text/note-id", note.id);
     e.dataTransfer.setData("text/plain", note.id);
     e.dataTransfer.effectAllowed = "move";
   };
@@ -372,7 +373,7 @@ function FolderGroup({
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setDragOver(false);
-    const noteId = e.dataTransfer.getData("text/plain");
+    const noteId = e.dataTransfer.getData("text/note-id") || e.dataTransfer.getData("text/plain");
     if (noteId && onMoveNoteToFolder) {
       onMoveNoteToFolder(noteId, folder.id);
     }
@@ -384,6 +385,11 @@ function FolderGroup({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
+      style={{
+        borderRadius: 6,
+        border: dragOver ? "1.5px dashed var(--color-obsidian-accent)" : "1.5px dashed transparent",
+        transition: "border 0.15s, background 0.15s",
+      }}
     >
       <button
         className="w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all"
@@ -448,7 +454,50 @@ export default function Sidebar({
   const [explorerMenu, setExplorerMenu] = useState<{ x: number; y: number } | null>(null);
   const [sortMode, setSortMode] = useState<SortMode>("modified");
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [rootDragOver, setRootDragOver] = useState(false);
   const allTags = getAllTags(notes);
+
+  // ── Root-level drop zone: move notes out of folders back to root ──
+  const handleRootDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setRootDragOver(true);
+  };
+  const handleRootDragLeave = () => setRootDragOver(false);
+  const handleRootDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setRootDragOver(false);
+    // External file drop from OS
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      Array.from(e.dataTransfer.files).forEach((file) => {
+        if (file.name.endsWith(".md") || file.name.endsWith(".txt") || file.type.startsWith("text/")) {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const content = reader.result as string;
+            const title = file.name.replace(/\.(md|txt)$/, "");
+            onNewNote("markdown");
+            // Patch the just-created note with the file content
+            const newest = allNotes.reduce((a, b) =>
+              new Date(b.createdAt) > new Date(a.createdAt) ? b : a
+            );
+            onRenameNote(newest.id, title);
+            onStateChange({
+              notes: allNotes.map((n) =>
+                n.id === newest.id ? { ...n, title, content } : n
+              ),
+            });
+          };
+          reader.readAsText(file);
+        }
+      });
+      return;
+    }
+    // Internal note drag — move to root
+    const noteId = e.dataTransfer.getData("text/note-id");
+    if (noteId && onMoveNoteToFolder) {
+      onMoveNoteToFolder(noteId, "root");
+    }
+  };
 
   // Sort notes helper
   const sortNotes = (list: Note[]) => {
@@ -881,22 +930,41 @@ export default function Sidebar({
                   onToggleSelect={toggleSelect}
                 />
               ))}
-              {/* Root-level notes (no folder) */}
-              {sortNotes(notes.filter((n) => n.folder === "root" || !n.folder)).map((note) => (
-                <FileTreeItem
-                  key={note.id}
-                  note={note}
-                  isActive={activeNoteId === note.id}
-                  onClick={() => onNoteOpen ? onNoteOpen(note.id) : onStateChange({ activeNoteId: note.id, mainView: "editor" })}
-                  onDelete={onDeleteNote}
-                  onRename={onRenameNote}
-                  onStarToggle={handleStarToggle}
-                  onPinToggle={onTogglePin}
-                  selectionMode={selectionMode}
-                  isSelected={selectedIds.has(note.id)}
-                  onToggleSelect={toggleSelect}
-                />
-              ))}
+              {/* Root-level notes (no folder) — also a drop zone */}
+              <div
+                onDragOver={handleRootDragOver}
+                onDragLeave={handleRootDragLeave}
+                onDrop={handleRootDrop}
+                style={{
+                  borderRadius: 6,
+                  border: rootDragOver ? "1.5px dashed var(--color-obsidian-accent)" : "1.5px dashed transparent",
+                  background: rootDragOver ? "rgba(124,106,247,0.08)" : "transparent",
+                  transition: "border 0.15s, background 0.15s",
+                  minHeight: 32,
+                  padding: rootDragOver ? 4 : 0,
+                }}
+              >
+                {rootDragOver && notes.filter((n) => n.folder === "root" || !n.folder).length === 0 && (
+                  <div className="flex items-center justify-center py-3 text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    Drop here to move to root
+                  </div>
+                )}
+                {sortNotes(notes.filter((n) => n.folder === "root" || !n.folder)).map((note) => (
+                  <FileTreeItem
+                    key={note.id}
+                    note={note}
+                    isActive={activeNoteId === note.id}
+                    onClick={() => onNoteOpen ? onNoteOpen(note.id) : onStateChange({ activeNoteId: note.id, mainView: "editor" })}
+                    onDelete={onDeleteNote}
+                    onRename={onRenameNote}
+                    onStarToggle={handleStarToggle}
+                    onPinToggle={onTogglePin}
+                    selectionMode={selectionMode}
+                    isSelected={selectedIds.has(note.id)}
+                    onToggleSelect={toggleSelect}
+                  />
+                ))}
+              </div>
             </div>
           )}
 

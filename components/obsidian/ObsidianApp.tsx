@@ -27,12 +27,14 @@ import {
   useViewportWidth,
 } from "./MobileNav";
 import { SyncService } from "@/lib/firebase/sync";
+import { isElectron, vaultClient, fsClient } from "@/lib/vault/client";
+import { noteToMarkdown, markdownToNote, noteFilePath } from "@/lib/vault/serializer";
 import {
   X, Sparkles, FileEdit, Link2, Palette, Package,
   Search as SearchIcon, CalendarDays as CalendarIcon,
   FolderTree, History, Download, Command, Cloud,
   Smartphone, BookOpen, FolderOpen, Check,
-  Info, Crown, Mail, User, Settings, LogIn, FileText,
+  Info, Crown, Mail, User, Settings, LogIn, FileText, HardDrive,
 } from "lucide-react";
 
 const INITIAL_STATE: AppState = {
@@ -103,12 +105,79 @@ export default function ObsidianApp() {
   const [userInfoOpen, setUserInfoOpen] = useState(false);
   const [pluginToast, setPluginToast] = useState<{ message: string; visible: boolean } | null>(null);
 
+  // ── Vault (Electron desktop only) ──────────────────────────────────────────
+  const [vaultPath, setVaultPath] = useState<string | null>(null);
+  const [recentVaults, setRecentVaults] = useState<Array<{ path: string; name: string; lastOpened: number }>>([]);
+  const vaultSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
   }, []);
 
+  // ── Vault helpers (Electron) ────────────────────────────────────────────────
+  const loadVault = useCallback(async (vaultDir: string) => {
+    const filePaths = await fsClient.listFiles(vaultDir);
+    const notes: Note[] = await Promise.all(
+      filePaths.map(async (fp: string) => {
+        const raw = await fsClient.readFile(fp);
+        return markdownToNote(fp, raw);
+      })
+    );
+    await vaultClient.setRecent(vaultDir);
+    setVaultPath(vaultDir);
+    if (notes.length > 0) {
+      patch({
+        notes,
+        activeNoteId: notes[0].id,
+        openNoteIds: [notes[0].id],
+      });
+    } else {
+      const blankNote: Note = {
+        id: `note-${Date.now()}`,
+        title: "Untitled",
+        content: "# Untitled\n\nStart writing\u2026",
+        tags: [],
+        folder: "root",
+        createdAt: new Date().toISOString().split("T")[0],
+        updatedAt: new Date().toISOString().split("T")[0],
+        starred: false,
+        wordCount: 0,
+        type: "markdown",
+      };
+      patch({
+        notes: [blankNote],
+        activeNoteId: blankNote.id,
+        openNoteIds: [blankNote.id],
+      });
+    }
+    setAppReady(true);
+    // Start watching for external changes
+    fsClient.onFileChanged(async (changedPath: string) => {
+      const raw = await fsClient.readFile(changedPath);
+      const updated = markdownToNote(changedPath, raw);
+      setState((prev) => ({
+        ...prev,
+        notes: prev.notes.map((n) => (n.filePath === changedPath ? updated : n)),
+      }));
+    });
+  }, [patch]);
+
   // First-run detection: show welcome modal and/or workspace setup
   useEffect(() => {
+    // ── Electron: auto-open last vault ──────────────────────────────────
+    if (isElectron()) {
+      vaultClient.listRecent().then(async (recents) => {
+        setRecentVaults(recents);
+        if (recents.length > 0) {
+          await loadVault(recents[0].path);
+          return;
+        }
+        // No recent vault — show welcome
+        setWelcomeModalOpen(true);
+      });
+      return;
+    }
+
     try {
       const welcomeDismissed = localStorage.getItem("voltex-welcome-dismissed");
       const workspaceConfigured = localStorage.getItem("voltex-workspace-configured");
@@ -430,12 +499,25 @@ export default function ObsidianApp() {
     });
     pushNoteToFirestore(newNote);
 
+    // Save to disk in Electron
+    if (isElectron() && vaultPath) {
+      const fp = noteFilePath(vaultPath, newNote);
+      fsClient.writeFile(fp, noteToMarkdown({ ...newNote, filePath: fp })).then(() => {
+        setState((prev) => ({
+          ...prev,
+          notes: prev.notes.map((n) =>
+            n.id === newNote.id ? { ...n, filePath: fp } : n
+          ),
+        }));
+      });
+    }
+
     // Close mobile menu
     if (isMobile) {
       setMobileNewNoteMenuOpen(false);
       setMobileView("home");
     }
-  }, [pushNoteToFirestore, isMobile]);
+  }, [pushNoteToFirestore, isMobile, vaultPath]);
 
   // Create folder
   const createFolder = useCallback((name: string) => {
@@ -518,9 +600,28 @@ export default function ObsidianApp() {
           return result;
         }),
       }));
-      if (updatedNote) pushNoteToFirestore(updatedNote);
+      if (updatedNote) {
+        pushNoteToFirestore(updatedNote);
+        // Debounced save to disk in Electron
+        if (isElectron() && vaultPath) {
+          const noteToSave: Note = updatedNote;
+          if (vaultSaveTimerRef.current) clearTimeout(vaultSaveTimerRef.current);
+          vaultSaveTimerRef.current = setTimeout(async () => {
+            const fp = noteToSave.filePath || noteFilePath(vaultPath, noteToSave);
+            await fsClient.writeFile(fp, noteToMarkdown({ ...noteToSave, filePath: fp }));
+            if (!noteToSave.filePath) {
+              setState((prev) => ({
+                ...prev,
+                notes: prev.notes.map((n) =>
+                  n.id === noteToSave.id ? { ...n, filePath: fp } : n
+                ),
+              }));
+            }
+          }, 300);
+        }
+      }
     },
-    [pushNoteToFirestore]
+    [pushNoteToFirestore, vaultPath]
   );
 
   const restoreNoteVersion = useCallback((noteId: string, versionId: string) => {
@@ -579,6 +680,10 @@ export default function ObsidianApp() {
     setState((prev) => {
       const trashedNote = prev.notes.find((n) => n.id === id);
       if (trashedNote) pushNoteToFirestore(trashedNote);
+      // Move file to .trash in Electron
+      if (isElectron() && trashedNote?.filePath) {
+        fsClient.deleteFile(trashedNote.filePath);
+      }
       return prev;
     });
   }, [pushNoteToFirestore]);
@@ -1205,6 +1310,27 @@ export default function ObsidianApp() {
               setAppReady(true);
             }
           }}
+          onOpenVault={isElectron() ? async () => {
+            const chosen = await vaultClient.open();
+            if (chosen) {
+              setWelcomeModalOpen(false);
+              await loadVault(chosen);
+            }
+          } : undefined}
+          onCreateVault={isElectron() ? async () => {
+            const parentResult = await vaultClient.open();
+            if (!parentResult) return;
+            const name = prompt("Vault name:");
+            if (!name) return;
+            const newVault = await vaultClient.create(name, parentResult);
+            setWelcomeModalOpen(false);
+            await loadVault(newVault);
+          } : undefined}
+          recentVaults={isElectron() ? recentVaults : undefined}
+          onOpenRecent={isElectron() ? async (vaultDir: string) => {
+            setWelcomeModalOpen(false);
+            await loadVault(vaultDir);
+          } : undefined}
         />
       )}
 
@@ -1277,7 +1403,15 @@ const WELCOME_FEATURES = [
   { icon: Command, title: "Keyboard Shortcuts", desc: "Ctrl+P command palette, Ctrl+N new note, and many more" },
 ] as const;
 
-function WelcomeModal({ onDismiss, onSignIn }: { onDismiss: () => void; onSignIn: () => void }) {
+interface WelcomeModalProps {
+  onDismiss: () => void;
+  onSignIn: () => void;
+  onOpenVault?: () => void;
+  onCreateVault?: () => void;
+  recentVaults?: Array<{ path: string; name: string; lastOpened: number }>;
+  onOpenRecent?: (vaultPath: string) => void;
+}
+function WelcomeModal({ onDismiss, onSignIn, onOpenVault, onCreateVault, recentVaults, onOpenRecent }: WelcomeModalProps) {
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center"
@@ -1405,6 +1539,52 @@ function WelcomeModal({ onDismiss, onSignIn }: { onDismiss: () => void; onSignIn
               >
                 Get Started
               </button>
+
+              {/* Electron vault section */}
+              {(onOpenVault || onCreateVault) && (
+                <>
+                  <div className="w-full h-px my-4" style={{ background: "var(--color-obsidian-border)" }} />
+                  <div className="w-full text-left">
+                    <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                      LOCAL VAULT
+                    </p>
+                    {onOpenVault && (
+                      <button
+                        onClick={onOpenVault}
+                        className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium mb-2 text-left transition-opacity hover:opacity-90"
+                        style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
+                      >
+                        <FolderOpen size={14} /> Open Folder...
+                      </button>
+                    )}
+                    {onCreateVault && (
+                      <button
+                        onClick={onCreateVault}
+                        className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium mb-2 text-left transition-opacity hover:opacity-90"
+                        style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
+                      >
+                        <HardDrive size={14} /> Create New Vault...
+                      </button>
+                    )}
+                    {recentVaults && recentVaults.length > 0 && (
+                      <div className="mt-2">
+                        <p className="text-xs mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>Recent</p>
+                        {recentVaults.map((v) => (
+                          <button
+                            key={v.path}
+                            onClick={() => onOpenRecent?.(v.path)}
+                            className="w-full px-3 py-1.5 rounded text-xs text-left truncate transition-opacity hover:opacity-80"
+                            style={{ color: "var(--color-obsidian-text)" }}
+                            title={v.path}
+                          >
+                            {v.name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

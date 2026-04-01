@@ -12,11 +12,16 @@
     "url": "https://github.com/Dev-Lune/voltex-notes/issues",
     "email": "sidharth@devlune.in"
   },
+  "main": "dist-electron/main.js",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "electron:compile": "node scripts/electron-build.mjs",
+    "electron:dev": "concurrently -k -n NEXT,ELECTRON \"next dev -p 3001\" \"wait-on http://localhost:3001 && cross-env NODE_ENV=development ELECTRON_PORT=3001 electron dist-electron/main.js\"",
+    "electron:build": "next build && node scripts/electron-build.mjs && electron-builder",
+    "electron:publish": "next build && node scripts/electron-build.mjs && electron-builder --publish always"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.9.1",
@@ -49,14 +54,19 @@
     "@radix-ui/react-tooltip": "1.2.8",
     "@vercel/analytics": "1.6.1",
     "autoprefixer": "^10.4.20",
+    "chokidar": "^4.0.3",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "1.1.1",
     "date-fns": "4.1.0",
     "diff": "^8.0.4",
     "dompurify": "^3.3.3",
+    "electron-store": "^10.0.0",
+    "electron-updater": "^6.3.9",
     "embla-carousel-react": "8.6.0",
     "firebase": "^12.11.0",
+    "get-port": "^7.1.0",
+    "gray-matter": "^4.0.3",
     "input-otp": "1.4.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.564.0",
@@ -72,6 +82,7 @@
     "sonner": "^1.7.1",
     "tailwind-merge": "^3.3.1",
     "vaul": "^1.1.2",
+    "wait-on": "^8.0.1",
     "zod": "^3.24.1"
   },
   "devDependencies": {
@@ -81,6 +92,11 @@
     "@types/node": "^22",
     "@types/react": "19.2.14",
     "@types/react-dom": "19.2.3",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "esbuild": "^0.25.12",
     "postcss": "^8.5",
     "tailwindcss": "^4.2.0",
     "tw-animate-css": "1.3.3",

@@ -40,6 +40,14 @@ firebase-debug.log
 firestore-debug.log
 ui-debug.log
 
+# Electron build output
+dist-electron/
+release/
+
+# Claude / AI
+.claude/
+CLAUDE.md
+
 # Misc generated files
 logo_concepts_v2.html
 devlune_badge_showcase.html
@@ -49,6 +57,4 @@ VoltexNotes.txt
 
 .github/
 .ignore/
-CLAUDE.md
-.claude
 docs/

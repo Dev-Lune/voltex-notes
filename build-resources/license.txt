@@ -1,0 +1,32 @@
+VOLTEX NOTES — END USER LICENSE AGREEMENT
+
+Copyright (c) 2026 DevLune Studios (devlune.in)
+
+By installing and using Voltex Notes ("the Software"), you agree to the following terms:
+
+1. LICENSE GRANT
+   This software is provided under the MIT License. You are granted a free, non-exclusive, worldwide license to use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies of the Software, subject to the conditions below.
+
+2. CONDITIONS
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+3. DATA & PRIVACY
+   Voltex Notes may store your notes locally on your device and optionally sync them to cloud services (Firebase/Firestore) if you sign in. Your data remains yours. We do not sell or share your personal data with third parties.
+
+4. THIRD-PARTY SERVICES
+   The Software integrates with Google Firebase for authentication and cloud sync. Your use of these services is subject to Google's Terms of Service and Privacy Policy.
+
+5. UPDATES
+   The Software may automatically check for and download updates. You can disable this in settings.
+
+6. DISCLAIMER OF WARRANTY
+   THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+7. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+8. ACCEPTANCE
+   By clicking "I Agree" and installing the Software, you acknowledge that you have read, understood, and agree to be bound by the terms of this agreement.
+
+For the full MIT License, see: https://github.com/Dev-Lune/voltex-notes/blob/main/LICENSE
+Contact: sidharth@devlune.in
