@@ -51,6 +51,6 @@ linux:
 
 publish:
   provider: github
-  owner: SIDDHU123M
+  owner: Dev-Lune
   repo: voltex-notes
   releaseType: release
