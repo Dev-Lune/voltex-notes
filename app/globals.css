@@ -7,17 +7,17 @@
    Obsidian-Cloud Design Tokens
    ══════════════════════════════════════════════════════════════════════════════ */
 :root {
-  /* Base palette */
-  --obs-bg:          #1e1e2e;
-  --obs-surface:     #252535;
-  --obs-surface-2:   #2a2a3d;
-  --obs-border:      #353550;
-  --obs-text:        #cdd6f4;
-  --obs-muted:       #6c7086;
-  --obs-accent:      #7c6af7;
-  --obs-accent-soft: #a78bfa;
-  --obs-link:        #89b4fa;
-  --obs-tag:         #cba6f7;
+  /* Base palette — Voltex Dark */
+  --obs-bg:          #0f1117;
+  --obs-surface:     #161822;
+  --obs-surface-2:   #1c1f2b;
+  --obs-border:      #262a38;
+  --obs-text:        #d4d8e8;
+  --obs-muted:       #5c6278;
+  --obs-accent:      #3b8ef5;
+  --obs-accent-soft: #60a8ff;
+  --obs-link:        #5cc4ff;
+  --obs-tag:         #a48afb;
   --obs-tag-bg:      rgba(203,166,247,0.12);
   --obs-code-bg:     #181825;
   --obs-code-text:   #a6e3a1;

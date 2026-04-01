@@ -55,31 +55,34 @@ export const DEFAULT_SYNC_OPTIONS: SyncOptions = {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function noteToFirestore(note: Note) {
-  return {
+  const data: Record<string, unknown> = {
     id: note.id,
     title: note.title,
     content: note.content,
     type: note.type || "markdown",
-    folderId: note.folderId || "root",
+    folder: note.folder || "root",
     tags: note.tags || [],
     starred: note.starred || false,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt || new Date().toISOString(),
     _serverUpdatedAt: serverTimestamp(),
   };
+  if (note.drawingData) data.drawingData = note.drawingData;
+  return data;
 }
 
 function firestoreToNote(data: Record<string, unknown>): Note {
   return {
     id: data.id as string,
     title: data.title as string,
-    content: data.content as string,
+    content: (data.content as string) || "",
     type: (data.type as Note["type"]) || "markdown",
-    folderId: (data.folderId as string) || "root",
+    folder: (data.folder as string) || "root",
     tags: (data.tags as string[]) || [],
     starred: (data.starred as boolean) || false,
     createdAt: data.createdAt as string,
     updatedAt: data.updatedAt as string,
+    drawingData: data.drawingData as string | undefined,
   };
 }
 

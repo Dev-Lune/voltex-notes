@@ -61,6 +61,26 @@ export interface ObsidianTheme {
 }
 export const THEMES: ObsidianTheme[] = [
   {
+    id: "voltex-dark",
+    name: "Voltex Dark",
+    description: "The signature Voltex theme — electric blue on deep charcoal.",
+    author: "DevLune Studios",
+    downloads: 0,
+    preview: ["#0f1117", "#3b8ef5", "#d4d8e8"],
+    vars: {
+      "--obs-bg": "#0f1117",
+      "--obs-surface": "#161822",
+      "--obs-surface-2": "#1c1f2b",
+      "--obs-border": "#262a38",
+      "--obs-text": "#d4d8e8",
+      "--obs-muted": "#5c6278",
+      "--obs-accent": "#3b8ef5",
+      "--obs-accent-soft": "#60a8ff",
+      "--obs-link": "#5cc4ff",
+      "--obs-tag": "#a48afb",
+    },
+  },
+  {
     id: "obsidian-default",
     name: "Obsidian Default",
     description: "The classic deep-purple dark theme.",

@@ -23,6 +23,7 @@ import {
   useMobile,
   useSwipe,
 } from "./MobileNav";
+import { SyncService } from "@/lib/firebase/sync";
 
 const INITIAL_STATE: AppState = {
   notes: SAMPLE_NOTES,
@@ -41,7 +42,7 @@ const INITIAL_STATE: AppState = {
   sidebarCollapsed: false,
   syncStatus: "synced",
   user: null,
-  activeThemeId: "obsidian-default",
+  activeThemeId: "voltex-dark",
   newNoteTypeMenuOpen: false,
   marketplaceOpen: false,
   installedPluginIds: ["excalidraw", "obsidian-kanban"],
@@ -54,8 +55,9 @@ export default function ObsidianApp() {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
   const historyRef = useRef<string[]>([SAMPLE_NOTES[0].id]);
   const historyIdxRef = useRef(0);
-  const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const mainRef = useRef<HTMLDivElement>(null);
+  const syncServiceRef = useRef<SyncService | null>(null);
+  const pushDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
   // Mobile state
   const isMobile = useMobile();
@@ -67,25 +69,39 @@ export default function ObsidianApp() {
     setState((prev) => ({ ...prev, ...p }));
   }, []);
 
-  // Apply theme
+  // Apply theme + persist
   useEffect(() => {
     const theme = THEMES.find((t) => t.id === state.activeThemeId) ?? THEMES[0];
     const root = document.documentElement;
     Object.entries(theme.vars).forEach(([key, value]) => {
       root.style.setProperty(key, value);
     });
+    // Save to localStorage
+    try { localStorage.setItem("voltex-theme", state.activeThemeId); } catch { /* ignore */ }
   }, [state.activeThemeId]);
+
+  // Load saved theme from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("voltex-theme");
+      if (saved && THEMES.find((t) => t.id === saved)) {
+        patch({ activeThemeId: saved });
+      }
+    } catch { /* ignore */ }
+  }, [patch]);
 
   // Restore Firebase auth session on mount
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
+    let initialSyncDone = false;
     (async () => {
       try {
-        const { getFirebaseAuth } = await import("@/lib/firebase/config");
+        const { getFirebaseAuth, getFirebaseDb } = await import("@/lib/firebase/config");
         const { onAuthStateChanged } = await import("firebase/auth");
+        const { doc, getDoc } = await import("firebase/firestore");
         const auth = getFirebaseAuth();
         if (!auth) return;
-        unsubscribe = onAuthStateChanged(auth, (fbUser) => {
+        unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
           if (fbUser) {
             patch({
               user: {
@@ -94,26 +110,130 @@ export default function ObsidianApp() {
                 uid: fbUser.uid,
                 photoURL: fbUser.photoURL || undefined,
               },
-              syncStatus: "synced",
+              syncStatus: "syncing",
             });
+
+            // Load theme from Firestore
+            try {
+              const db = getFirebaseDb();
+              if (db) {
+                const prefSnap = await getDoc(doc(db, "users", fbUser.uid, "settings", "preferences"));
+                if (prefSnap.exists()) {
+                  const data = prefSnap.data();
+                  if (data.activeThemeId && THEMES.find((t) => t.id === data.activeThemeId)) {
+                    patch({ activeThemeId: data.activeThemeId });
+                  }
+                }
+              }
+            } catch { /* ignore */ }
+
+            // Initialize SyncService for real-time note sync
+            try {
+              // Destroy previous instance if any
+              if (syncServiceRef.current) {
+                await syncServiceRef.current.destroy();
+              }
+              initialSyncDone = false;
+              const service = new SyncService(fbUser.uid);
+
+              // Listen for status changes
+              service.onStatusChange((status) => {
+                patch({ syncStatus: status });
+              });
+
+              // Listen for remote note changes (real-time sync)
+              service.onRemoteChange((remoteNotes) => {
+                setState((prev) => {
+                  // First sync: if Firestore is empty, push local notes
+                  if (remoteNotes.length === 0 && prev.notes.length > 0 && !initialSyncDone) {
+                    initialSyncDone = true;
+                    service.syncAll(prev.notes);
+                    return { ...prev, syncStatus: "synced" };
+                  }
+                  initialSyncDone = true;
+
+                  // Merge remote notes, preserving local-only fields
+                  const mergedNotes = remoteNotes.map((remote) => {
+                    const local = prev.notes.find((n) => n.id === remote.id);
+                    return {
+                      ...remote,
+                      wordCount: countWords(remote.content),
+                      versionHistory: local?.versionHistory,
+                      drawingData: remote.drawingData || local?.drawingData,
+                    };
+                  });
+
+                  // Fix active/open note IDs to valid notes
+                  const noteIds = new Set(mergedNotes.map((n) => n.id));
+                  const newOpenNoteIds = prev.openNoteIds.filter((id) => noteIds.has(id));
+                  let newActiveNoteId = prev.activeNoteId && noteIds.has(prev.activeNoteId)
+                    ? prev.activeNoteId
+                    : mergedNotes[0]?.id ?? null;
+                  if (newOpenNoteIds.length === 0 && mergedNotes.length > 0) {
+                    newOpenNoteIds.push(mergedNotes[0].id);
+                    newActiveNoteId = mergedNotes[0].id;
+                  }
+
+                  return {
+                    ...prev,
+                    notes: mergedNotes,
+                    activeNoteId: newActiveNoteId,
+                    openNoteIds: newOpenNoteIds,
+                  };
+                });
+              });
+
+              syncServiceRef.current = service;
+              await service.initialize();
+            } catch { /* SyncService init failed — ignore */ }
           } else {
+            // User logged out
+            if (syncServiceRef.current) {
+              await syncServiceRef.current.destroy();
+              syncServiceRef.current = null;
+            }
             patch({ user: null, syncStatus: "offline" });
           }
         });
       } catch { /* Firebase not configured — ignore */ }
     })();
-    return () => unsubscribe?.();
+    return () => {
+      unsubscribe?.();
+      // Cleanup sync service on unmount
+      if (syncServiceRef.current) {
+        syncServiceRef.current.destroy();
+        syncServiceRef.current = null;
+      }
+    };
   }, [patch]);
 
-  // Simulate sync when notes change
-  const triggerSync = useCallback(() => {
-    if (!state.user) return;
-    patch({ syncStatus: "syncing" });
-    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
-    syncTimerRef.current = setTimeout(() => {
-      patch({ syncStatus: "synced" });
-    }, 1200);
-  }, [state.user, patch]);
+  // Push note to Firestore (debounced per note)
+  const pushNoteToFirestore = useCallback((note: Note) => {
+    const service = syncServiceRef.current;
+    if (!service) return;
+    const existing = pushDebounceRef.current.get(note.id);
+    if (existing) clearTimeout(existing);
+    pushDebounceRef.current.set(
+      note.id,
+      setTimeout(() => {
+        service.pushNote(note);
+        pushDebounceRef.current.delete(note.id);
+      }, 500)
+    );
+  }, []);
+
+  // Delete note from Firestore (immediate)
+  const deleteNoteFromFirestore = useCallback((noteId: string) => {
+    const service = syncServiceRef.current;
+    if (!service) return;
+    // Cancel any pending push for this note
+    const pending = pushDebounceRef.current.get(noteId);
+    if (pending) {
+      clearTimeout(pending);
+      pushDebounceRef.current.delete(noteId);
+    }
+    service.deleteNote(noteId);
+  }, []);
 
   // Open note with history tracking
   const openNote = useCallback(
@@ -181,21 +301,23 @@ export default function ObsidianApp() {
       ? "Untitled Board"
       : "Untitled";
 
+    const defaultFolder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : "root";
+    const newNote: Note = {
+      id,
+      title,
+      content: type === "markdown" ? `# ${title}\n\nStart writing…` : "",
+      tags: [],
+      folder: defaultFolder,
+      createdAt: now,
+      updatedAt: now,
+      starred: false,
+      wordCount: 0,
+      type,
+    };
+
     setState((prev) => {
-      const defaultFolder = prev.preferences.defaultNoteLocation || "root";
-      const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : defaultFolder;
-      const newNote: Note = {
-        id,
-        title,
-        content: type === "markdown" ? `# ${title}\n\nStart writing…` : "",
-        tags: [],
-        folder,
-        createdAt: now,
-        updatedAt: now,
-        starred: false,
-        wordCount: 0,
-        type,
-      };
+      const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : (prev.preferences.defaultNoteLocation || "root");
+      newNote.folder = folder;
       return {
         ...prev,
         notes: [...prev.notes, newNote],
@@ -204,14 +326,14 @@ export default function ObsidianApp() {
         mainView: "editor",
       };
     });
-    triggerSync();
+    pushNoteToFirestore(newNote);
 
     // Close mobile menu
     if (isMobile) {
       setMobileNewNoteMenuOpen(false);
       setMobileView("home");
     }
-  }, [triggerSync, isMobile]);
+  }, [pushNoteToFirestore, isMobile]);
 
   // Create folder
   const createFolder = useCallback((name: string) => {
@@ -224,15 +346,22 @@ export default function ObsidianApp() {
 
   // Move note to folder
   const moveNoteToFolder = useCallback((noteId: string, folderId: string) => {
+    let movedNote: Note | null = null;
     setState((prev) => ({
       ...prev,
-      notes: prev.notes.map((n) => n.id === noteId ? { ...n, folder: folderId } : n),
+      notes: prev.notes.map((n) => {
+        if (n.id !== noteId) return n;
+        const updated = { ...n, folder: folderId };
+        movedNote = updated;
+        return updated;
+      }),
     }));
-    triggerSync();
-  }, [triggerSync]);
+    if (movedNote) pushNoteToFirestore(movedNote);
+  }, [pushNoteToFirestore]);
   // Update note
   const updateNote = useCallback(
     (id: string, noteP: Partial<Note>) => {
+      let updatedNote: Note | null = null;
       setState((prev) => ({
         ...prev,
         notes: prev.notes.map((n) => {
@@ -255,20 +384,23 @@ export default function ObsidianApp() {
               ].slice(0, MAX_NOTE_VERSIONS)
             : history;
 
-          return {
+          const result = {
             ...n,
             ...noteP,
             wordCount: countWords(nextContent),
             versionHistory: nextHistory,
           };
+          updatedNote = result;
+          return result;
         }),
       }));
-      triggerSync();
+      if (updatedNote) pushNoteToFirestore(updatedNote);
     },
-    [triggerSync]
+    [pushNoteToFirestore]
   );
 
   const restoreNoteVersion = useCallback((noteId: string, versionId: string) => {
+    let restoredNote: Note | null = null;
     setState((prev) => ({
       ...prev,
       notes: prev.notes.map((n) => {
@@ -288,17 +420,19 @@ export default function ObsidianApp() {
           updatedAt: n.updatedAt,
         };
 
-        return {
+        const result = {
           ...n,
           content: targetVersion.content,
           updatedAt: restoredDate,
           wordCount: countWords(targetVersion.content),
           versionHistory: [snapshotBeforeRestore, ...history.filter((v) => v.id !== versionId)].slice(0, MAX_NOTE_VERSIONS),
         };
+        restoredNote = result;
+        return result;
       }),
     }));
-    triggerSync();
-  }, [triggerSync]);
+    if (restoredNote) pushNoteToFirestore(restoredNote);
+  }, [pushNoteToFirestore]);
 
   // Delete note
   const deleteNote = useCallback((id: string) => {
@@ -316,15 +450,23 @@ export default function ObsidianApp() {
         activeNoteId: newActive,
       };
     });
-  }, []);
+    deleteNoteFromFirestore(id);
+  }, [deleteNoteFromFirestore]);
 
   // Rename note
   const renameNote = useCallback((id: string, title: string) => {
+    let renamedNote: Note | null = null;
     setState((prev) => ({
       ...prev,
-      notes: prev.notes.map((n) => (n.id === id ? { ...n, title } : n)),
+      notes: prev.notes.map((n) => {
+        if (n.id !== id) return n;
+        const updated = { ...n, title };
+        renamedNote = updated;
+        return updated;
+      }),
     }));
-  }, []);
+    if (renamedNote) pushNoteToFirestore(renamedNote);
+  }, [pushNoteToFirestore]);
 
 
 
@@ -338,6 +480,11 @@ export default function ObsidianApp() {
 
   const handleSignOut = useCallback(async () => {
     try {
+      // Destroy sync service
+      if (syncServiceRef.current) {
+        await syncServiceRef.current.destroy();
+        syncServiceRef.current = null;
+      }
       const { getFirebaseAuth } = await import("@/lib/firebase/config");
       const auth = getFirebaseAuth();
       if (auth) await auth.signOut();
@@ -348,7 +495,24 @@ export default function ObsidianApp() {
   // Theme change handler
   const handleThemeChange = useCallback((themeId: string) => {
     patch({ activeThemeId: themeId });
-  }, [patch]);
+    // Sync to Firestore if logged in
+    if (state.user?.uid) {
+      (async () => {
+        try {
+          const { getFirebaseDb } = await import("@/lib/firebase/config");
+          const { doc, setDoc } = await import("firebase/firestore");
+          const db = getFirebaseDb();
+          if (db) {
+            await setDoc(
+              doc(db, "users", state.user!.uid!, "settings", "preferences"),
+              { activeThemeId: themeId, updatedAt: new Date().toISOString() },
+              { merge: true }
+            );
+          }
+        } catch { /* ignore */ }
+      })();
+    }
+  }, [patch, state.user]);
 
   // Marketplace install/uninstall
   const handleMarketplaceInstall = useCallback((id: string) => {
@@ -609,7 +773,7 @@ export default function ObsidianApp() {
                   openNoteIds: [...prev.openNoteIds, id],
                   mainView: "editor",
                 }));
-                triggerSync();
+                pushNoteToFirestore(newNote);
               }}
             />
           </div>
