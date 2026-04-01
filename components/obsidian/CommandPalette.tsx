@@ -14,6 +14,8 @@ interface CommandPaletteProps {
   onNewNote: () => void;
   onOpenSettings: () => void;
   onOpenGraph: () => void;
+  onViewMode?: (mode: "editor" | "split" | "preview") => void;
+  onSidebarView?: (view: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "marketplace") => void;
 }
 
 interface CommandItem {
@@ -33,6 +35,8 @@ export default function CommandPalette({
   onNewNote,
   onOpenSettings,
   onOpenGraph,
+  onViewMode,
+  onSidebarView,
 }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [selectedIdx, setSelectedIdx] = useState(0);
@@ -75,35 +79,35 @@ export default function CommandPalette({
       type: "command",
       icon: <Edit3 size={14} />,
       label: "Switch to Edit mode",
-      action: () => onClose(),
+      action: () => { onViewMode?.("editor"); onClose(); },
     },
     {
       id: "view-preview",
       type: "command",
       icon: <Eye size={14} />,
       label: "Switch to Preview mode",
-      action: () => onClose(),
+      action: () => { onViewMode?.("preview"); onClose(); },
     },
     {
       id: "view-split",
       type: "command",
       icon: <Columns2 size={14} />,
       label: "Toggle Split view",
-      action: () => onClose(),
+      action: () => { onViewMode?.("split"); onClose(); },
     },
     {
       id: "starred",
       type: "command",
       icon: <Star size={14} />,
       label: "Show Bookmarks",
-      action: () => onClose(),
+      action: () => { onSidebarView?.("bookmarks"); onClose(); },
     },
     {
       id: "tags",
       type: "command",
       icon: <Tag size={14} />,
       label: "Browse Tags",
-      action: () => onClose(),
+      action: () => { onSidebarView?.("tags"); onClose(); },
     },
   ];
 

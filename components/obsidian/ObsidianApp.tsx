@@ -379,10 +379,17 @@ export default function ObsidianApp() {
       : "Untitled";
 
     const defaultFolder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : "root";
+    const defaultKanbanContent = JSON.stringify({
+      columns: [
+        { id: "col-todo", label: "To Do", color: "#89b4fa", cards: [] },
+        { id: "col-progress", label: "In Progress", color: "#f9e2af", cards: [] },
+        { id: "col-done", label: "Done", color: "#a6e3a1", cards: [] },
+      ],
+    });
     const newNote: Note = {
       id,
       title,
-      content: type === "markdown" ? `# ${title}\n\nStart writing…` : "",
+      content: type === "markdown" ? `# ${title}\n\nStart writing…` : type === "kanban" ? defaultKanbanContent : "",
       tags: [],
       folder: defaultFolder,
       createdAt: now,
@@ -1005,6 +1012,8 @@ export default function ObsidianApp() {
           onNewNote={() => isMobile ? setMobileNewNoteMenuOpen(true) : createNote()}
           onOpenSettings={() => patch({ settingsOpen: true, commandPaletteOpen: false })}
           onOpenGraph={() => patch({ mainView: "graph", commandPaletteOpen: false })}
+          onViewMode={(mode) => patch({ viewMode: mode, commandPaletteOpen: false })}
+          onSidebarView={(view) => patch({ sidebarView: view, sidebarCollapsed: false, commandPaletteOpen: false })}
         />
       )}
 

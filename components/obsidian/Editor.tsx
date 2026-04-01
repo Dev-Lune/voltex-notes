@@ -7,7 +7,7 @@ import {
   Heading1, Heading2, Quote, Minus, CheckSquare, Hash, Pencil,
   CalendarDays, LayoutGrid, Search, Replace, ChevronDown, ChevronUp,
   CaseSensitive, Regex, FileText, Copy, Download, Clipboard, Trash2,
-  Table2, Check, Loader2, ArrowDown, ArrowRight, AlignLeft, AlignCenter,
+  Table2, Check, Loader2, ArrowDown, ArrowLeft, ArrowRight, AlignLeft, AlignCenter,
   AlignRight, RotateCcw, Rows3, Columns3,
 } from "lucide-react";
 import { Note, AppState, countWords, NoteType } from "./data";
@@ -1516,6 +1516,7 @@ function EditorPane({
   onLinkAutocomplete,
   onCloseAutocomplete,
   preferences,
+  onAddTag,
 }: {
   note: Note;
   notes: Note[];
@@ -1526,7 +1527,11 @@ function EditorPane({
   onLinkAutocomplete?: (data: { filter: string; position: { top: number; left: number } } | null) => void;
   onCloseAutocomplete?: () => void;
   preferences?: AppState["preferences"];
+  onAddTag?: (tag: string) => void;
 }) {
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagValue, setNewTagValue] = useState("");
+
   // Smart list continuation
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const ta = e.currentTarget;
@@ -1664,12 +1669,35 @@ function EditorPane({
               #{tag}
             </span>
           ))}
-          <button
-            className="text-xs px-2 py-0.5 rounded-full border border-dashed opacity-0 hover:opacity-60 transition-opacity focus:opacity-60"
-            style={{ color: "var(--color-obsidian-muted-text)", borderColor: "var(--color-obsidian-border)" }}
-          >
-            + tag
-          </button>
+          {addingTag ? (
+            <input
+              autoFocus
+              className="text-xs px-2 py-0.5 rounded-full bg-transparent outline-none w-24"
+              style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-accent)" }}
+              placeholder="tag name"
+              value={newTagValue}
+              onChange={(e) => setNewTagValue(e.target.value.replace(/\s/g, "-"))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newTagValue.trim()) {
+                  onAddTag?.(newTagValue.trim());
+                  setNewTagValue(""); setAddingTag(false);
+                }
+                if (e.key === "Escape") { setNewTagValue(""); setAddingTag(false); }
+              }}
+              onBlur={() => {
+                if (newTagValue.trim()) onAddTag?.(newTagValue.trim());
+                setNewTagValue(""); setAddingTag(false);
+              }}
+            />
+          ) : (
+            <button
+              onClick={() => setAddingTag(true)}
+              className="text-xs px-2 py-0.5 rounded-full border border-dashed opacity-60 hover:opacity-100 transition-opacity focus:opacity-100"
+              style={{ color: "var(--color-obsidian-muted-text)", borderColor: "var(--color-obsidian-border)" }}
+            >
+              + tag
+            </button>
+          )}
         </div>
         {/* YAML Frontmatter Editor */}
         <FrontmatterEditor
@@ -1814,76 +1842,194 @@ function DailyNoteView({
 
 // ─── Kanban note view ────────────────────────────────────────────────────────
 
-const KANBAN_COLS = [
-  { id: "backlog", label: "Backlog", color: "#6c7086" },
-  { id: "active", label: "In Progress", color: "#89b4fa" },
-  { id: "review", label: "Review", color: "#f9e2af" },
-  { id: "done", label: "Done", color: "#a6e3a1" },
-];
+interface KanbanCard { id: string; title: string }
+interface KanbanColumn { id: string; label: string; color: string; cards: KanbanCard[] }
+interface KanbanBoard { columns: KanbanColumn[] }
 
-function KanbanView() {
+const DEFAULT_KANBAN_BOARD: KanbanBoard = {
+  columns: [
+    { id: "col-todo", label: "To Do", color: "#89b4fa", cards: [] },
+    { id: "col-progress", label: "In Progress", color: "#f9e2af", cards: [] },
+    { id: "col-done", label: "Done", color: "#a6e3a1", cards: [] },
+  ],
+};
+
+function parseKanbanBoard(content: string): KanbanBoard {
+  try {
+    const parsed = JSON.parse(content);
+    if (parsed && Array.isArray(parsed.columns)) return parsed;
+  } catch { /* not JSON yet */ }
+  return DEFAULT_KANBAN_BOARD;
+}
+
+function KanbanView({ note, onNoteChange }: { note: Note; onNoteChange: (id: string, patch: Partial<Note>) => void }) {
+  const board = parseKanbanBoard(note.content);
+  const [addingCardCol, setAddingCardCol] = useState<string | null>(null);
+  const [newCardTitle, setNewCardTitle] = useState("");
+  const [editingCard, setEditingCard] = useState<string | null>(null);
+  const [editCardTitle, setEditCardTitle] = useState("");
+  const [addingColumn, setAddingColumn] = useState(false);
+  const [newColLabel, setNewColLabel] = useState("");
+
+  const updateBoard = (b: KanbanBoard) => {
+    onNoteChange(note.id, { content: JSON.stringify(b), updatedAt: new Date().toISOString().split("T")[0] });
+  };
+
+  const addCard = (colId: string) => {
+    if (!newCardTitle.trim()) return;
+    updateBoard({ ...board, columns: board.columns.map(c =>
+      c.id === colId ? { ...c, cards: [...c.cards, { id: `card-${Date.now()}`, title: newCardTitle.trim() }] } : c
+    ) });
+    setNewCardTitle(""); setAddingCardCol(null);
+  };
+
+  const deleteCard = (colId: string, cardId: string) => {
+    updateBoard({ ...board, columns: board.columns.map(c =>
+      c.id === colId ? { ...c, cards: c.cards.filter(k => k.id !== cardId) } : c
+    ) });
+  };
+
+  const saveCardTitle = (colId: string, cardId: string) => {
+    if (!editCardTitle.trim()) { setEditingCard(null); return; }
+    updateBoard({ ...board, columns: board.columns.map(c =>
+      c.id === colId ? { ...c, cards: c.cards.map(k => k.id === cardId ? { ...k, title: editCardTitle.trim() } : k) } : c
+    ) });
+    setEditingCard(null);
+  };
+
+  const moveCard = (fromColId: string, cardId: string, direction: number) => {
+    const ci = board.columns.findIndex(c => c.id === fromColId);
+    const ti = ci + direction;
+    if (ti < 0 || ti >= board.columns.length) return;
+    const card = board.columns[ci].cards.find(k => k.id === cardId);
+    if (!card) return;
+    updateBoard({ ...board, columns: board.columns.map((c, i) => {
+      if (i === ci) return { ...c, cards: c.cards.filter(k => k.id !== cardId) };
+      if (i === ti) return { ...c, cards: [...c.cards, card] };
+      return c;
+    }) });
+  };
+
+  const addColumn = () => {
+    if (!newColLabel.trim()) return;
+    const palette = ["#89b4fa", "#f9e2af", "#a6e3a1", "#cba6f7", "#f38ba8", "#fab387", "#94e2d5"];
+    updateBoard({ ...board, columns: [...board.columns, {
+      id: `col-${Date.now()}`, label: newColLabel.trim(),
+      color: palette[board.columns.length % palette.length], cards: [],
+    }] });
+    setNewColLabel(""); setAddingColumn(false);
+  };
+
+  const deleteColumn = (colId: string) => {
+    updateBoard({ ...board, columns: board.columns.filter(c => c.id !== colId) });
+  };
+
   return (
     <div className="flex-1 overflow-x-auto overflow-y-hidden">
       <div className="flex gap-3 p-6 h-full min-w-max">
-        {KANBAN_COLS.map((col) => (
-          <div
-            key={col.id}
-            className="w-60 flex flex-col rounded-xl overflow-hidden shrink-0"
-            style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
-          >
-            <div
-              className="flex items-center gap-2 px-3 py-2.5"
-              style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
-            >
+        {board.columns.map((col, colIdx) => (
+          <div key={col.id} className="w-64 flex flex-col rounded-xl overflow-hidden shrink-0"
+            style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}>
+            {/* Column header */}
+            <div className="flex items-center gap-2 px-3 py-2.5"
+              style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
               <div className="w-2 h-2 rounded-full" style={{ background: col.color }} />
-              <span className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
-                {col.label}
-              </span>
-              <div
-                className="ml-auto text-xs px-1.5 py-0.5 rounded-full"
-                style={{ background: `${col.color}20`, color: col.color }}
-              >
-                {col.id === "backlog" ? 3 : col.id === "active" ? 2 : col.id === "review" ? 1 : 4}
+              <span className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>{col.label}</span>
+              <div className="ml-auto flex items-center gap-1">
+                <span className="text-xs px-1.5 py-0.5 rounded-full"
+                  style={{ background: `${col.color}20`, color: col.color }}>{col.cards.length}</span>
+                <button onClick={() => deleteColumn(col.id)}
+                  className="p-0.5 rounded hover:bg-white/10 transition-colors"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}><X size={12} /></button>
               </div>
             </div>
+            {/* Cards */}
             <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-2">
-              {Array.from({ length: col.id === "backlog" ? 3 : col.id === "active" ? 2 : col.id === "review" ? 1 : 4 }).map((_, i) => (
-                <div
-                  key={i}
-                  className="p-2.5 rounded-lg cursor-pointer hover:bg-white/5 transition-colors"
-                  style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}
-                >
-                  <p className="text-xs font-medium" style={{ color: "var(--color-obsidian-text)" }}>
-                    {col.id === "backlog"
-                      ? ["Research plugin API", "Design onboarding flow", "Write documentation"][i]
-                      : col.id === "active"
-                      ? ["Implement sync engine", "Fix graph rendering"][i]
-                      : col.id === "review"
-                      ? ["Code review PR #47"][i]
-                      : ["Deploy v1.0", "Update changelog", "Close sprint", "Demo walkthrough"][i]}
-                  </p>
-                  <div className="flex items-center gap-1.5 mt-1.5">
-                    <div
-                      className="w-4 h-4 rounded-full text-xs flex items-center justify-center font-bold"
-                      style={{ background: "var(--color-obsidian-accent)", color: "#fff", fontSize: 8 }}
-                    >
-                      {String.fromCharCode(65 + i)}
-                    </div>
-                    <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                      #task
-                    </span>
+              {col.cards.map((card) => (
+                <div key={card.id} className="group p-2.5 rounded-lg transition-colors"
+                  style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+                  {editingCard === card.id ? (
+                    <input autoFocus className="w-full bg-transparent outline-none text-xs"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      value={editCardTitle}
+                      onChange={(e) => setEditCardTitle(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter") saveCardTitle(col.id, card.id); if (e.key === "Escape") setEditingCard(null); }}
+                      onBlur={() => saveCardTitle(col.id, card.id)} />
+                  ) : (
+                    <p className="text-xs font-medium cursor-pointer"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                      onClick={() => { setEditingCard(card.id); setEditCardTitle(card.title); }}>{card.title}</p>
+                  )}
+                  <div className="flex items-center gap-1 mt-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {colIdx > 0 && (
+                      <button onClick={() => moveCard(col.id, card.id, -1)}
+                        className="p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                        <ArrowLeft size={11} /></button>
+                    )}
+                    {colIdx < board.columns.length - 1 && (
+                      <button onClick={() => moveCard(col.id, card.id, 1)}
+                        className="p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                        <ArrowRight size={11} /></button>
+                    )}
+                    <button onClick={() => deleteCard(col.id, card.id)}
+                      className="ml-auto p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                      <Trash2 size={11} /></button>
                   </div>
                 </div>
               ))}
-              <button
-                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs w-full hover:bg-white/5 transition-colors"
-                style={{ color: "var(--color-obsidian-muted-text)", border: "1px dashed var(--color-obsidian-border)" }}
-              >
-                <Plus size={11} /> Add card
-              </button>
+              {addingCardCol === col.id ? (
+                <div className="p-2 rounded-lg" style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+                  <input autoFocus className="w-full bg-transparent outline-none text-xs mb-2"
+                    style={{ color: "var(--color-obsidian-text)" }}
+                    placeholder="Card title..."
+                    value={newCardTitle}
+                    onChange={(e) => setNewCardTitle(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter") addCard(col.id); if (e.key === "Escape") { setAddingCardCol(null); setNewCardTitle(""); } }} />
+                  <div className="flex gap-1">
+                    <button onClick={() => addCard(col.id)}
+                      className="px-2 py-1 rounded text-xs font-medium"
+                      style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}>Add</button>
+                    <button onClick={() => { setAddingCardCol(null); setNewCardTitle(""); }}
+                      className="px-2 py-1 rounded text-xs"
+                      style={{ color: "var(--color-obsidian-muted-text)" }}>Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => { setAddingCardCol(col.id); setNewCardTitle(""); }}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs w-full hover:bg-white/5 transition-colors"
+                  style={{ color: "var(--color-obsidian-muted-text)", border: "1px dashed var(--color-obsidian-border)" }}>
+                  <Plus size={11} /> Add card
+                </button>
+              )}
             </div>
           </div>
         ))}
+        {/* Add column */}
+        {addingColumn ? (
+          <div className="w-64 shrink-0 p-3 rounded-xl"
+            style={{ background: "var(--color-obsidian-surface)", border: "1px dashed var(--color-obsidian-border)" }}>
+            <input autoFocus className="w-full bg-transparent outline-none text-xs mb-2"
+              style={{ color: "var(--color-obsidian-text)" }}
+              placeholder="Column name..."
+              value={newColLabel}
+              onChange={(e) => setNewColLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") addColumn(); if (e.key === "Escape") { setAddingColumn(false); setNewColLabel(""); } }} />
+            <div className="flex gap-1">
+              <button onClick={addColumn}
+                className="px-2 py-1 rounded text-xs font-medium"
+                style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}>Add</button>
+              <button onClick={() => { setAddingColumn(false); setNewColLabel(""); }}
+                className="px-2 py-1 rounded text-xs"
+                style={{ color: "var(--color-obsidian-muted-text)" }}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <button onClick={() => setAddingColumn(true)}
+            className="w-64 shrink-0 h-20 flex items-center justify-center gap-2 rounded-xl text-xs hover:bg-white/5 transition-colors"
+            style={{ color: "var(--color-obsidian-muted-text)", border: "1px dashed var(--color-obsidian-border)" }}>
+            <Plus size={14} /> Add column
+          </button>
+        )}
       </div>
     </div>
   );
@@ -2188,7 +2334,7 @@ export default function Editor({
           </div>
         );
       }
-      return <KanbanView />;
+      return <KanbanView note={activeNote} onNoteChange={onNoteChange} />;
     }
 
     // Markdown — split/edit/preview
@@ -2204,6 +2350,7 @@ export default function Editor({
           onLinkAutocomplete={setLinkAutocomplete}
           onCloseAutocomplete={() => setLinkAutocomplete(null)}
           preferences={state.preferences}
+          onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
         />
       );
     }
@@ -2236,6 +2383,7 @@ export default function Editor({
             onLinkAutocomplete={setLinkAutocomplete}
             onCloseAutocomplete={() => setLinkAutocomplete(null)}
             preferences={state.preferences}
+            onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
           />
         </div>
         <div className="flex-1 flex flex-col overflow-hidden">
