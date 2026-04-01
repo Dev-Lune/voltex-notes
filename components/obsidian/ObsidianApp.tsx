@@ -156,14 +156,11 @@ export default function ObsidianApp() {
     }
   }, []);
 
-  // Auto-collapse panels on small desktop viewports
+  // Auto-collapse right panel on small desktop viewports
   useEffect(() => {
     if (isMobile) return;
     if (viewportWidth > 0 && viewportWidth < 1100) {
       patch({ rightPanelOpen: false });
-    }
-    if (viewportWidth > 0 && viewportWidth < 900) {
-      patch({ sidebarCollapsed: true });
     }
   }, [viewportWidth, isMobile, patch]);
 

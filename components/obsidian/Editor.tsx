@@ -1163,6 +1163,7 @@ function Toolbar({
   const isDrawing = note?.type === "drawing";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const moreButtonRef = useRef<HTMLButtonElement>(null);
   const plugins = installedPluginIds ?? [];
 
   const iconSize = isMobile ? 16 : 13;
@@ -1298,6 +1299,7 @@ function Toolbar({
             )}
             <div className="relative">
               <button
+                ref={moreButtonRef}
                 onClick={() => setMoreMenuOpen((v) => !v)}
                 className={btnClass}
                 style={{ color: moreMenuOpen ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}
@@ -1415,8 +1417,13 @@ function Toolbar({
                   ) : (
                     /* Desktop: dropdown menu */
                     <div
-                      className="absolute right-0 top-full mt-1 z-[999] w-48 rounded-lg overflow-hidden shadow-xl"
-                      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+                      className="fixed z-[999] w-48 rounded-lg overflow-hidden shadow-xl"
+                      style={{
+                        background: "var(--color-obsidian-surface)",
+                        border: "1px solid var(--color-obsidian-border)",
+                        top: moreButtonRef.current ? moreButtonRef.current.getBoundingClientRect().bottom + 4 : 0,
+                        left: moreButtonRef.current ? moreButtonRef.current.getBoundingClientRect().right - 192 : 0,
+                      }}
                     >
                       {!isDrawing && (
                         <button
