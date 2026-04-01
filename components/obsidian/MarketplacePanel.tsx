@@ -3,11 +3,12 @@
 import React, { useState, useMemo } from "react";
 import {
   Search, Star, Download, CheckCircle, Plus, X, ExternalLink,
-  Zap, Eye, Palette, GitBranch, PenTool, LayoutGrid, Sparkles, Filter
+  Zap, Eye, Palette, GitBranch, PenTool, LayoutGrid, Sparkles, Filter, Code2
 } from "lucide-react";
 import {
   MARKETPLACE_ITEMS, MarketplaceItem, PluginCategory, formatDownloads
 } from "./data";
+import { SAMPLE_SNIPPETS } from "../../lib/marketplace/data";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -16,6 +17,8 @@ interface MarketplacePanelProps {
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
   onClose: () => void;
+  enabledSnippetIds?: string[];
+  onToggleSnippet?: (id: string) => void;
 }
 
 type SortBy = "downloads" | "stars" | "name";
@@ -411,6 +414,8 @@ export default function MarketplacePanel({
   onInstall,
   onUninstall,
   onClose,
+  enabledSnippetIds = [],
+  onToggleSnippet,
 }: MarketplacePanelProps) {
   const [search, setSearch] = useState("");
   const [activeCategory, setActiveCategory] = useState<PluginCategory | "all">("all");
@@ -610,6 +615,62 @@ export default function MarketplacePanel({
                 onSelect={setSelectedItem}
               />
             ))}
+
+            {/* CSS Snippets section */}
+            {SAMPLE_SNIPPETS.length > 0 && (
+              <>
+                <div className="mt-4 mb-2 flex items-center gap-2">
+                  <Code2 size={14} style={{ color: "var(--color-obsidian-accent-soft)" }} />
+                  <span className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+                    CSS Snippets
+                  </span>
+                  <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    ({SAMPLE_SNIPPETS.length})
+                  </span>
+                </div>
+                {SAMPLE_SNIPPETS.map((snippet) => {
+                  const enabled = enabledSnippetIds.includes(snippet.id);
+                  return (
+                    <div
+                      key={snippet.id}
+                      className="flex items-center justify-between px-3 py-2.5 rounded-lg transition-colors"
+                      style={{
+                        background: enabled ? "rgba(166,227,161,0.08)" : "var(--color-obsidian-bg)",
+                        border: `1px solid ${enabled ? "rgba(166,227,161,0.2)" : "var(--color-obsidian-border)"}`,
+                      }}
+                    >
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-medium" style={{ color: "var(--color-obsidian-text)" }}>
+                            {snippet.name}
+                          </span>
+                          <div className="flex gap-1">
+                            {snippet.tags.slice(0, 2).map((tag) => (
+                              <span key={tag} className="text-xs px-1 rounded" style={{ background: "rgba(124,106,247,0.1)", color: "var(--color-obsidian-accent-soft)", fontSize: "0.7em" }}>
+                                {tag}
+                              </span>
+                            ))}
+                          </div>
+                        </div>
+                        <p className="text-xs truncate mt-0.5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                          {snippet.description}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => onToggleSnippet?.(snippet.id)}
+                        className="shrink-0 ml-2 px-2.5 py-1 rounded-md text-xs font-medium transition-colors"
+                        style={{
+                          background: enabled ? "rgba(243,139,168,0.15)" : "rgba(166,227,161,0.15)",
+                          color: enabled ? "#f38ba8" : "#a6e3a1",
+                        }}
+                      >
+                        {enabled ? "Disable" : "Enable"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </>
+            )}
           </div>
         </div>
 

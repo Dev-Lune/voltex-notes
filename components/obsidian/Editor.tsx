@@ -8,7 +8,8 @@ import {
   CalendarDays, LayoutGrid, Search, Replace, ChevronDown, ChevronUp,
   CaseSensitive, Regex, FileText, Copy, Download, Clipboard, Trash2,
   Table2, Check, Loader2, ArrowDown, ArrowLeft, ArrowRight, AlignLeft, AlignCenter,
-  AlignRight, RotateCcw, Rows3, Columns3,
+  AlignRight, RotateCcw, Rows3, Columns3, Timer, Play, Pause, RotateCw,
+  Globe, BookOpen, GitCommit, Brain, Sparkles, FlipHorizontal,
 } from "lucide-react";
 import { Note, AppState, countWords, NoteType } from "./data";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -1132,6 +1133,12 @@ function Toolbar({
   shareStatus,
   isLoggedIn,
   isMobile,
+  installedPluginIds,
+  onTogglePomodoro,
+  onToggleAIPanel,
+  onToggleGitHistory,
+  onToggleSlidingPanes,
+  slidingPanesActive,
 }: {
   viewMode: AppState["viewMode"];
   onViewMode: (m: AppState["viewMode"]) => void;
@@ -1146,10 +1153,17 @@ function Toolbar({
   shareStatus?: "idle" | "sharing" | "copied";
   isLoggedIn?: boolean;
   isMobile?: boolean;
+  installedPluginIds?: string[];
+  onTogglePomodoro?: () => void;
+  onToggleAIPanel?: () => void;
+  onToggleGitHistory?: () => void;
+  onToggleSlidingPanes?: () => void;
+  slidingPanesActive?: boolean;
 }) {
   const isDrawing = note?.type === "drawing";
   const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const [tableDialogOpen, setTableDialogOpen] = useState(false);
+  const plugins = installedPluginIds ?? [];
 
   const iconSize = isMobile ? 16 : 13;
   const btnClass = isMobile
@@ -1215,6 +1229,13 @@ function Toolbar({
                 </button>
               ))}
             </div>
+            {plugins.includes("sliding-panes") && !isMobile && (
+              <button onClick={onToggleSlidingPanes} title="Sliding Panes"
+                className={btnClass}
+                style={{ color: slidingPanesActive ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}>
+                <FlipHorizontal size={iconSize} />
+              </button>
+            )}
             <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
           </>
         )}
@@ -1337,6 +1358,50 @@ function Toolbar({
                       >
                         <Clipboard size={16} /> Copy content
                       </button>
+                      {plugins.includes("obsidian-publish-plus") && note && (
+                        <button className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); if (note) exportNoteAsHTML(note); }}>
+                          <Globe size={16} /> Export as HTML
+                        </button>
+                      )}
+                      {plugins.includes("obsidian-git") && note && (
+                        <button className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleGitHistory?.(); }}>
+                          <GitCommit size={16} /> Version History
+                        </button>
+                      )}
+                      {plugins.includes("ai-assistant") && note && (
+                        <button className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleAIPanel?.(); }}>
+                          <Sparkles size={16} /> Writing Analytics
+                        </button>
+                      )}
+                      {plugins.includes("pomodoro") && (
+                        <button className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onTogglePomodoro?.(); }}>
+                          <Timer size={16} /> Pomodoro Timer
+                        </button>
+                      )}
+                      {plugins.includes("citations") && note && (
+                        <button className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            const content = note.content;
+                            const hasBib = content.includes("## References");
+                            let newContent = content;
+                            if (!hasBib) {
+                              newContent += `\n\n## References\n\n- [@authorYear] Author, A. (Year). *Title*. Journal, Volume(Issue), Pages.`;
+                            }
+                            onNoteChange(note.id, { content: newContent });
+                          }}>
+                          <BookOpen size={16} /> Insert Citation
+                        </button>
+                      )}
                       <div className="mx-4 my-1" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
                       <button
                         className="w-full text-left flex items-center gap-3 px-5 py-3.5 text-sm hover:bg-white/5 transition-colors"
@@ -1400,6 +1465,50 @@ function Toolbar({
                       >
                         <Clipboard size={11} /> Copy content
                       </button>
+                      {plugins.includes("obsidian-publish-plus") && note && (
+                        <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); if (note) exportNoteAsHTML(note); }}>
+                          <Globe size={11} /> Export as HTML
+                        </button>
+                      )}
+                      {plugins.includes("obsidian-git") && note && (
+                        <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleGitHistory?.(); }}>
+                          <GitCommit size={11} /> Version History
+                        </button>
+                      )}
+                      {plugins.includes("ai-assistant") && note && (
+                        <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onToggleAIPanel?.(); }}>
+                          <Sparkles size={11} /> Writing Analytics
+                        </button>
+                      )}
+                      {plugins.includes("pomodoro") && (
+                        <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => { setMoreMenuOpen(false); onTogglePomodoro?.(); }}>
+                          <Timer size={11} /> Pomodoro Timer
+                        </button>
+                      )}
+                      {plugins.includes("citations") && note && (
+                        <button className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          onClick={() => {
+                            setMoreMenuOpen(false);
+                            const content = note.content;
+                            const hasBib = content.includes("## References");
+                            let newContent = content;
+                            if (!hasBib) {
+                              newContent += `\n\n## References\n\n- [@authorYear] Author, A. (Year). *Title*. Journal, Volume(Issue), Pages.`;
+                            }
+                            onNoteChange(note.id, { content: newContent });
+                          }}>
+                          <BookOpen size={11} /> Insert Citation
+                        </button>
+                      )}
                       <div className="my-0.5" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
                       <button
                         className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
@@ -1473,6 +1582,272 @@ function Toolbar({
   );
 }
 
+// ─── Pomodoro Timer Widget ────────────────────────────────────────────────────
+
+function PomodoroWidget({ state, onStateChange }: {
+  state: AppState;
+  onStateChange: (patch: Partial<AppState>) => void;
+}) {
+  const pom = state.pomodoro ?? { running: false, mode: "work" as const, secondsLeft: 25 * 60, sessions: 0 };
+
+  useEffect(() => {
+    if (!pom.running) return;
+    const interval = setInterval(() => {
+      const next = pom.secondsLeft - 1;
+      if (next <= 0) {
+        const isWork = pom.mode === "work";
+        onStateChange({
+          pomodoro: {
+            running: true,
+            mode: isWork ? "break" : "work",
+            secondsLeft: isWork ? 5 * 60 : 25 * 60,
+            sessions: isWork ? pom.sessions + 1 : pom.sessions,
+          },
+        });
+      } else {
+        onStateChange({ pomodoro: { ...pom, secondsLeft: next } });
+      }
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [pom, onStateChange]);
+
+  const mins = Math.floor(pom.secondsLeft / 60);
+  const secs = pom.secondsLeft % 60;
+  const modeColor = pom.mode === "work" ? "#f38ba8" : "#a6e3a1";
+
+  return (
+    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-3 py-2 rounded-xl shadow-2xl"
+      style={{ background: "var(--color-obsidian-surface)", border: `1px solid ${modeColor}40` }}>
+      <div className="w-2 h-2 rounded-full" style={{ background: modeColor, boxShadow: pom.running ? `0 0 6px ${modeColor}` : "none" }} />
+      <span className="text-sm font-mono font-bold tabular-nums" style={{ color: "var(--color-obsidian-text)", minWidth: "3.5em" }}>
+        {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+      </span>
+      <span className="text-xs capitalize" style={{ color: modeColor }}>{pom.mode}</span>
+      <button onClick={() => onStateChange({ pomodoro: { ...pom, running: !pom.running } })}
+        className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-text)" }}>
+        {pom.running ? <Pause size={12} /> : <Play size={12} />}
+      </button>
+      <button onClick={() => onStateChange({ pomodoro: { running: false, mode: "work", secondsLeft: 25 * 60, sessions: pom.sessions } })}
+        className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+        <RotateCw size={12} />
+      </button>
+      <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>#{pom.sessions}</span>
+      <button onClick={() => onStateChange({ pomodoro: undefined })}
+        className="p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+        <X size={10} />
+      </button>
+    </div>
+  );
+}
+
+// ─── AI Writing Stats Panel ───────────────────────────────────────────────────
+
+function AIWritingPanel({ note, onClose }: { note: Note; onClose: () => void }) {
+  const text = note.content;
+  const words = text.split(/\s+/).filter(Boolean);
+  const sentences = text.split(/[.!?]+/).filter((s) => s.trim().length > 0);
+  const paragraphs = text.split(/\n\s*\n/).filter((p) => p.trim().length > 0);
+  const avgWordsPerSentence = sentences.length ? Math.round(words.length / sentences.length) : 0;
+  const readingTimeMin = Math.max(1, Math.ceil(words.length / 200));
+
+  // Flesch reading ease (simplified)
+  const syllables = words.reduce((sum, w) => {
+    const s = w.toLowerCase().replace(/[^a-z]/g, "");
+    const count = s.replace(/(?:[^laeiouy]es|ed|[^laeiouy]e)$/, "").replace(/^y/, "").match(/[aeiouy]{1,2}/g);
+    return sum + (count ? count.length : 1);
+  }, 0);
+  const fleschScore = sentences.length > 0 && words.length > 0
+    ? Math.round(206.835 - 1.015 * (words.length / sentences.length) - 84.6 * (syllables / words.length))
+    : 0;
+  const readability = fleschScore >= 60 ? "Easy" : fleschScore >= 30 ? "Moderate" : "Complex";
+  const readabilityColor = fleschScore >= 60 ? "#a6e3a1" : fleschScore >= 30 ? "#f9e2af" : "#f38ba8";
+
+  const headings = (text.match(/^#{1,6}\s/gm) || []).length;
+  const links = (text.match(/\[\[.+?\]\]|\[.+?\]\(.+?\)/g) || []).length;
+  const codeBlocks = (text.match(/```/g) || []).length / 2;
+
+  const stats = [
+    { label: "Words", value: words.length },
+    { label: "Characters", value: text.length },
+    { label: "Sentences", value: sentences.length },
+    { label: "Paragraphs", value: paragraphs.length },
+    { label: "Avg Words/Sentence", value: avgWordsPerSentence },
+    { label: "Reading Time", value: `${readingTimeMin} min` },
+    { label: "Headings", value: headings },
+    { label: "Links", value: links },
+    { label: "Code Blocks", value: Math.floor(codeBlocks) },
+  ];
+
+  return (
+    <div className="absolute right-2 top-12 z-50 w-64 rounded-xl shadow-2xl overflow-hidden"
+      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}>
+      <div className="flex items-center justify-between px-3 py-2"
+        style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+        <div className="flex items-center gap-1.5">
+          <Sparkles size={12} style={{ color: "var(--color-obsidian-accent)" }} />
+          <span className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>Writing Analytics</span>
+        </div>
+        <button onClick={onClose} className="p-0.5 rounded hover:bg-white/10"
+          style={{ color: "var(--color-obsidian-muted-text)" }}><X size={12} /></button>
+      </div>
+      <div className="p-3">
+        <div className="flex items-center gap-2 mb-3 p-2 rounded-lg" style={{ background: `${readabilityColor}15` }}>
+          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold"
+            style={{ background: `${readabilityColor}25`, color: readabilityColor }}>{fleschScore}</div>
+          <div>
+            <p className="text-xs font-medium" style={{ color: readabilityColor }}>{readability}</p>
+            <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>Readability Score</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5">
+          {stats.map(({ label, value }) => (
+            <div key={label} className="flex justify-between px-2 py-1 rounded"
+              style={{ background: "var(--color-obsidian-bg)" }}>
+              <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>{label}</span>
+              <span className="text-xs font-medium" style={{ color: "var(--color-obsidian-text)" }}>{value}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Publish Plus Export ───────────────────────────────────────────────────────
+
+function exportNoteAsHTML(note: Note) {
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${note.title}</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 680px; margin: 2rem auto; padding: 0 1rem; color: #e0e0e0; background: #1a1a2e; line-height: 1.7; }
+    h1,h2,h3 { color: #f0f0f0; } a { color: #89b4fa; } code { background: #2a2a4a; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+    pre { background: #2a2a4a; padding: 1rem; border-radius: 8px; overflow-x: auto; } pre code { background: none; padding: 0; }
+    blockquote { border-left: 3px solid #89b4fa; margin: 1rem 0; padding: 0.5rem 1rem; color: #a0a0c0; }
+    img { max-width: 100%; border-radius: 8px; } hr { border: none; border-top: 1px solid #333; margin: 2rem 0; }
+    .tags { display: flex; gap: 0.5rem; margin: 1rem 0; flex-wrap: wrap; }
+    .tag { background: #89b4fa20; color: #89b4fa; padding: 2px 10px; border-radius: 999px; font-size: 0.8em; }
+    .meta { color: #888; font-size: 0.85em; margin-bottom: 2rem; }
+  </style>
+</head>
+<body>
+  <h1>${note.title}</h1>
+  <p class="meta">Created ${note.createdAt} · Updated ${note.updatedAt}</p>
+  ${note.tags.length ? `<div class="tags">${note.tags.map((t) => `<span class="tag">#${t}</span>`).join("")}</div>` : ""}
+  <div>${note.content.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
+</body>
+</html>`;
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${note.title}.html`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+// ─── Git Version History Panel ────────────────────────────────────────────────
+
+function GitHistoryPanel({ note, onClose, onRestore }: {
+  note: Note;
+  onClose: () => void;
+  onRestore: (content: string, title: string) => void;
+}) {
+  const versions = note.versionHistory ?? [];
+  const [selectedIdx, setSelectedIdx] = useState<number | null>(null);
+  const [diffView, setDiffView] = useState(false);
+
+  const getSimpleDiff = (oldText: string, newText: string) => {
+    const oldLines = oldText.split("\n");
+    const newLines = newText.split("\n");
+    const maxLen = Math.max(oldLines.length, newLines.length);
+    const result: Array<{ type: "same" | "add" | "remove"; text: string }> = [];
+    for (let i = 0; i < maxLen; i++) {
+      const o = oldLines[i];
+      const n = newLines[i];
+      if (o === n) result.push({ type: "same", text: n ?? "" });
+      else {
+        if (o !== undefined) result.push({ type: "remove", text: o });
+        if (n !== undefined) result.push({ type: "add", text: n });
+      }
+    }
+    return result;
+  };
+
+  return (
+    <div className="absolute right-2 top-12 z-50 w-80 max-h-[70vh] rounded-xl shadow-2xl overflow-hidden flex flex-col"
+      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}>
+      <div className="flex items-center justify-between px-3 py-2 shrink-0"
+        style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+        <div className="flex items-center gap-1.5">
+          <GitCommit size={12} style={{ color: "var(--color-obsidian-accent)" }} />
+          <span className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>Version History</span>
+          <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>({versions.length})</span>
+        </div>
+        <button onClick={onClose} className="p-0.5 rounded hover:bg-white/10"
+          style={{ color: "var(--color-obsidian-muted-text)" }}><X size={12} /></button>
+      </div>
+      {versions.length === 0 ? (
+        <div className="p-4 text-center">
+          <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>No versions saved yet. Versions are created automatically when you edit.</p>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          {versions.map((v, i) => (
+            <div key={v.id}>
+              <button
+                className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors flex items-center gap-2"
+                style={{ background: selectedIdx === i ? "rgba(124,106,247,0.1)" : "transparent" }}
+                onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}>
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: i === 0 ? "#a6e3a1" : "var(--color-obsidian-muted-text)" }} />
+                <div className="flex-1 min-w-0">
+                  <p className="text-xs font-medium truncate" style={{ color: "var(--color-obsidian-text)" }}>{v.title || "Untitled"}</p>
+                  <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    {new Date(v.savedAt).toLocaleString()} · {v.content.length} chars
+                  </p>
+                </div>
+              </button>
+              {selectedIdx === i && (
+                <div className="px-3 pb-2">
+                  <div className="flex gap-1 mb-2">
+                    <button onClick={() => setDiffView(false)} className="px-2 py-0.5 rounded text-xs"
+                      style={{ background: !diffView ? "var(--color-obsidian-accent)" : "var(--color-obsidian-bg)", color: !diffView ? "#fff" : "var(--color-obsidian-muted-text)" }}>
+                      Preview
+                    </button>
+                    <button onClick={() => setDiffView(true)} className="px-2 py-0.5 rounded text-xs"
+                      style={{ background: diffView ? "var(--color-obsidian-accent)" : "var(--color-obsidian-bg)", color: diffView ? "#fff" : "var(--color-obsidian-muted-text)" }}>
+                      Diff
+                    </button>
+                    <button onClick={() => onRestore(v.content, v.title)} className="ml-auto px-2 py-0.5 rounded text-xs"
+                      style={{ background: "rgba(166,227,161,0.15)", color: "#a6e3a1" }}>
+                      Restore
+                    </button>
+                  </div>
+                  {diffView ? (
+                    <div className="max-h-40 overflow-y-auto rounded p-2 text-xs font-mono" style={{ background: "var(--color-obsidian-bg)", fontSize: "0.65rem" }}>
+                      {getSimpleDiff(v.content, note.content).map((line, li) => (
+                        <div key={li} style={{ color: line.type === "add" ? "#a6e3a1" : line.type === "remove" ? "#f38ba8" : "var(--color-obsidian-muted-text)" }}>
+                          {line.type === "add" ? "+" : line.type === "remove" ? "-" : " "} {line.text}
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="max-h-40 overflow-y-auto rounded p-2 text-xs" style={{ background: "var(--color-obsidian-bg)", color: "var(--color-obsidian-text)", whiteSpace: "pre-wrap", fontSize: "0.65rem" }}>
+                      {v.content.slice(0, 500)}{v.content.length > 500 ? "…" : ""}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Status bar ───────────────────────────────────────────────────────────────
 
 function StatusBar({ note, wordCount }: { note: Note | null; wordCount: number }) {
@@ -1517,6 +1892,7 @@ function EditorPane({
   onCloseAutocomplete,
   preferences,
   onAddTag,
+  installedPluginIds,
 }: {
   note: Note;
   notes: Note[];
@@ -1528,6 +1904,7 @@ function EditorPane({
   onCloseAutocomplete?: () => void;
   preferences?: AppState["preferences"];
   onAddTag?: (tag: string) => void;
+  installedPluginIds?: string[];
 }) {
   const [addingTag, setAddingTag] = useState(false);
   const [newTagValue, setNewTagValue] = useState("");
@@ -1613,12 +1990,60 @@ function EditorPane({
       onNoteChange(newValue);
       setTimeout(() => ta.setSelectionRange(selectionStart + 1, selectionStart + 1 + selected.length), 0);
     }
+
+    // Advanced Tables: Tab to next cell, Shift+Tab to prev cell, auto-format
+    if (e.key === "Tab" && installedPluginIds?.includes("advanced-tables")) {
+      const beforeCursor = value.substring(0, selectionStart);
+      const currentLineStart = beforeCursor.lastIndexOf("\n") + 1;
+      const currentLine = value.substring(currentLineStart, value.indexOf("\n", selectionStart) === -1 ? value.length : value.indexOf("\n", selectionStart));
+      if (currentLine.trimStart().startsWith("|")) {
+        e.preventDefault();
+        const afterCursor = value.substring(selectionStart);
+        if (e.shiftKey) {
+          const prevPipe = beforeCursor.lastIndexOf("|", selectionStart - currentLineStart - 1 + currentLineStart);
+          if (prevPipe >= currentLineStart) {
+            setTimeout(() => ta.setSelectionRange(prevPipe + 2, prevPipe + 2), 0);
+          }
+        } else {
+          const nextPipe = afterCursor.indexOf("|");
+          if (nextPipe !== -1) {
+            const newPos = selectionStart + nextPipe + 2;
+            setTimeout(() => ta.setSelectionRange(newPos, newPos), 0);
+          }
+        }
+      }
+    }
   };
 
-  // Link autocomplete detection
+  // Link autocomplete detection + Natural Language Dates
   const handleInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     const ta = e.target;
     const { selectionStart, value } = ta;
+
+    // Natural Language Dates: replace @date patterns
+    if (installedPluginIds?.includes("natural-language-dates")) {
+      const dateMap: Record<string, () => string> = {
+        "@today": () => new Date().toISOString().split("T")[0],
+        "@tomorrow": () => { const d = new Date(); d.setDate(d.getDate() + 1); return d.toISOString().split("T")[0]; },
+        "@yesterday": () => { const d = new Date(); d.setDate(d.getDate() - 1); return d.toISOString().split("T")[0]; },
+        "@next-week": () => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().split("T")[0]; },
+        "@next-monday": () => { const d = new Date(); d.setDate(d.getDate() + ((8 - d.getDay()) % 7 || 7)); return d.toISOString().split("T")[0]; },
+        "@now": () => new Date().toLocaleTimeString(),
+      };
+      const beforeCursor = value.substring(0, selectionStart);
+      for (const [pattern, getDate] of Object.entries(dateMap)) {
+        if (beforeCursor.endsWith(pattern)) {
+          const dateStr = getDate();
+          const newValue = value.substring(0, selectionStart - pattern.length) + dateStr + value.substring(selectionStart);
+          onNoteChange(newValue);
+          adjustHeight();
+          const newPos = selectionStart - pattern.length + dateStr.length;
+          setTimeout(() => { ta.setSelectionRange(newPos, newPos); }, 0);
+          return;
+        }
+      }
+    }
+
     onNoteChange(value);
     adjustHeight();
     
@@ -2126,6 +2551,8 @@ export default function Editor({
   const [showFindReplace, setShowFindReplace] = useState(false);
   const [hoverPreview, setHoverPreview] = useState<{ title: string; rect: DOMRect } | null>(null);
   const [linkAutocomplete, setLinkAutocomplete] = useState<{ filter: string; position: { top: number; left: number } } | null>(null);
+  const [showAIPanel, setShowAIPanel] = useState(false);
+  const [showGitHistory, setShowGitHistory] = useState(false);
 
   useEffect(() => {
     if (activeNote) setWordCount(countWords(activeNote.content));
@@ -2277,6 +2704,36 @@ export default function Editor({
   const renderNoteContent = () => {
     if (!activeNote) return <EmptyState onNewNote={onNewNote} installedPluginIds={state.installedPluginIds} />;
 
+    // Sliding Panes: show all open notes side-by-side
+    if (state.slidingPanesEnabled && state.installedPluginIds.includes("sliding-panes") && openNoteIds.length > 1) {
+      const openNotes = openNoteIds.map((id) => notes.find((n) => n.id === id)).filter(Boolean) as Note[];
+      return (
+        <div className="flex-1 flex overflow-x-auto" style={{ scrollSnapType: "x mandatory" }}>
+          {openNotes.map((paneNote) => (
+            <div key={paneNote.id} className="shrink-0 flex flex-col overflow-hidden"
+              style={{
+                width: `${Math.max(320, Math.min(480, window.innerWidth / openNotes.length))}px`,
+                scrollSnapAlign: "start",
+                borderRight: "1px solid var(--color-obsidian-border)",
+                background: paneNote.id === activeNoteId ? "var(--color-obsidian-bg)" : "var(--color-obsidian-surface)",
+              }}>
+              <button onClick={() => onStateChange({ activeNoteId: paneNote.id })}
+                className="shrink-0 flex items-center gap-2 px-3 py-1.5 text-xs"
+                style={{ borderBottom: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}>
+                <FileText size={11} />
+                <span className="truncate font-medium">{paneNote.title}</span>
+              </button>
+              <div className="flex-1 overflow-y-auto p-4">
+                <div className="prose-sm" style={{ color: "var(--color-obsidian-text)", fontSize: 13, lineHeight: 1.7, whiteSpace: "pre-wrap" }}>
+                  {paneNote.content || "Empty note"}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    }
+
     // Drawing note — full Excalidraw canvas (requires Excalidraw plugin)
     if (activeNote.type === "drawing") {
       if (!state.installedPluginIds.includes("excalidraw")) {
@@ -2351,6 +2808,7 @@ export default function Editor({
           onCloseAutocomplete={() => setLinkAutocomplete(null)}
           preferences={state.preferences}
           onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
+          installedPluginIds={state.installedPluginIds}
         />
       );
     }
@@ -2384,6 +2842,7 @@ export default function Editor({
             onCloseAutocomplete={() => setLinkAutocomplete(null)}
             preferences={state.preferences}
             onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
+            installedPluginIds={state.installedPluginIds}
           />
         </div>
         <div className="flex-1 flex flex-col overflow-hidden">
@@ -2433,6 +2892,12 @@ export default function Editor({
           shareStatus={shareStatus}
           isLoggedIn={!!state.user}
           isMobile={isMobile}
+          installedPluginIds={state.installedPluginIds}
+          onTogglePomodoro={() => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 } })}
+          onToggleAIPanel={() => setShowAIPanel((v) => !v)}
+          onToggleGitHistory={() => setShowGitHistory((v) => !v)}
+          onToggleSlidingPanes={() => onStateChange({ slidingPanesEnabled: !state.slidingPanesEnabled })}
+          slidingPanesActive={!!state.slidingPanesEnabled}
         />
       )}
       {/* Find & Replace */}
@@ -2447,7 +2912,76 @@ export default function Editor({
       <div className={`flex-1 min-h-0 overflow-hidden flex`}>
         {renderNoteContent()}
       </div>
+      {/* Plugin quick-access bar — shows installed plugin shortcuts */}
+      {!isMobile && activeNote && activeNote.type !== "drawing" && (() => {
+        const plugins = state.installedPluginIds.filter((id) => !["excalidraw", "obsidian-kanban"].includes(id));
+        if (plugins.length === 0) return null;
+        const items: Array<{ id: string; icon: React.ReactNode; label: string; active: boolean; onClick: () => void }> = [];
+        if (plugins.includes("pomodoro")) {
+          items.push({ id: "pomodoro", icon: <Timer size={11} />, label: "Pomodoro Timer", active: !!state.pomodoro,
+            onClick: () => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 } }) });
+        }
+        if (plugins.includes("ai-assistant")) {
+          items.push({ id: "ai", icon: <Sparkles size={11} />, label: "Writing Analytics", active: showAIPanel,
+            onClick: () => setShowAIPanel((v) => !v) });
+        }
+        if (plugins.includes("obsidian-git")) {
+          items.push({ id: "git", icon: <GitCommit size={11} />, label: "Version History", active: showGitHistory,
+            onClick: () => setShowGitHistory((v) => !v) });
+        }
+        if (plugins.includes("obsidian-publish-plus")) {
+          items.push({ id: "publish", icon: <Globe size={11} />, label: "Export as HTML", active: false,
+            onClick: () => { if (activeNote) exportNoteAsHTML(activeNote); } });
+        }
+        if (plugins.includes("citations")) {
+          items.push({ id: "cite", icon: <BookOpen size={11} />, label: "Insert Citation", active: false,
+            onClick: () => {
+              if (!activeNote) return;
+              const content = activeNote.content;
+              const hasBib = content.includes("## References");
+              let newContent = content;
+              if (!hasBib) {
+                newContent += `\n\n## References\n\n- [@authorYear] Author, A. (Year). *Title*. Journal, Volume(Issue), Pages.`;
+              }
+              onNoteChange(activeNote.id, { content: newContent });
+            } });
+        }
+        if (plugins.includes("sliding-panes")) {
+          items.push({ id: "sliding", icon: <FlipHorizontal size={11} />, label: "Sliding Panes", active: !!state.slidingPanesEnabled,
+            onClick: () => onStateChange({ slidingPanesEnabled: !state.slidingPanesEnabled }) });
+        }
+        if (items.length === 0) return null;
+        return (
+          <div className="flex items-center gap-1 px-3 py-0.5 shrink-0"
+            style={{ borderTop: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}>
+            <span className="text-xs mr-1" style={{ color: "var(--color-obsidian-muted-text)", fontSize: "0.6rem" }}>PLUGINS</span>
+            {items.map((item) => (
+              <button key={item.id} onClick={item.onClick}
+                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-xs hover:bg-white/10 transition-colors"
+                style={{
+                  color: item.active ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)",
+                  background: item.active ? "rgba(124,106,247,0.1)" : "transparent",
+                }}
+                title={item.label}>
+                {item.icon}
+                <span style={{ fontSize: "0.65rem" }}>{item.label}</span>
+              </button>
+            ))}
+          </div>
+        );
+      })()}
       {!isMobile && <StatusBar note={activeNote} wordCount={wordCount} />}
+      {/* Plugin panels */}
+      {showAIPanel && activeNote && state.installedPluginIds.includes("ai-assistant") && (
+        <AIWritingPanel note={activeNote} onClose={() => setShowAIPanel(false)} />
+      )}
+      {showGitHistory && activeNote && state.installedPluginIds.includes("obsidian-git") && (
+        <GitHistoryPanel note={activeNote} onClose={() => setShowGitHistory(false)}
+          onRestore={(content, title) => { onNoteChange(activeNote.id, { content, title }); setShowGitHistory(false); }} />
+      )}
+      {state.pomodoro && state.installedPluginIds.includes("pomodoro") && (
+        <PomodoroWidget state={state} onStateChange={onStateChange} />
+      )}
       {/* Hover Preview */}
       {hoverPreview && (
         <HoverPreview

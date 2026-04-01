@@ -15,6 +15,7 @@ import AuthModal from "./AuthModal";
 import SettingsModal from "./SettingsModal";
 import CanvasView from "./CanvasView";
 import MarketplacePanel from "./MarketplacePanel";
+import { SAMPLE_SNIPPETS } from "../../lib/marketplace/data";
 import {
   MobileHeader,
   MobileBottomNav,
@@ -55,10 +56,28 @@ const INITIAL_STATE: AppState = {
   newNoteTypeMenuOpen: false,
   marketplaceOpen: false,
   installedPluginIds: ["excalidraw", "obsidian-kanban"],
+  enabledSnippetIds: [],
   preferences: DEFAULT_PREFERENCES,
 };
 
 const MAX_NOTE_VERSIONS = 50;
+
+// Plugin access locations — shown as toast after install
+const PLUGIN_HINTS: Record<string, string> = {
+  "pomodoro": "Pomodoro Timer activated! Floating timer appears at the bottom-right.",
+  "ai-assistant": "Writing Analytics ready! Access via ⋮ menu → Writing Analytics.",
+  "obsidian-git": "Git History ready! Access via ⋮ menu → Version History.",
+  "obsidian-publish-plus": "Publish Plus ready! Access via ⋮ menu → Export as HTML.",
+  "citations": "Citations ready! Access via ⋮ menu → Insert Citation. Use [@key] in notes.",
+  "sliding-panes": "Sliding Panes ready! Toggle via the ⇄ button in the toolbar (needs 2+ notes open).",
+  "advanced-tables": "Advanced Tables active! Use Tab/Shift+Tab to navigate table cells.",
+  "natural-language-dates": "Natural Language Dates active! Type @today, @tomorrow, @now in the editor.",
+  "heatmap-calendar": "Heatmap Calendar added! Check the new 🔥 tab in the right panel.",
+  "spaced-repetition": "Flashcards added! Check the new 📖 tab in the right panel. Add Q:/A: pairs to notes.",
+  "mind-map": "Mind Map added! Check the new 🧠 tab in the right panel.",
+  "excalidraw": "Excalidraw ready! Create a Drawing note from the + menu.",
+  "obsidian-kanban": "Kanban ready! Create a Kanban note from the + menu.",
+};
 
 export default function ObsidianApp() {
   const [state, setState] = useState<AppState>(INITIAL_STATE);
@@ -81,6 +100,7 @@ export default function ObsidianApp() {
   const [workspaceSetupOpen, setWorkspaceSetupOpen] = useState(false);
   const [appReady, setAppReady] = useState(false);
   const [userInfoOpen, setUserInfoOpen] = useState(false);
+  const [pluginToast, setPluginToast] = useState<{ message: string; visible: boolean } | null>(null);
 
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
@@ -677,12 +697,32 @@ export default function ObsidianApp() {
 
   // Marketplace install/uninstall
   const handleMarketplaceInstall = useCallback((id: string) => {
-    setState((prev) => ({
-      ...prev,
-      installedPluginIds: prev.installedPluginIds.includes(id)
-        ? prev.installedPluginIds
-        : [...prev.installedPluginIds, id],
-    }));
+    setState((prev) => {
+      if (prev.installedPluginIds.includes(id)) return prev;
+      const next: Partial<AppState> = {
+        installedPluginIds: [...prev.installedPluginIds, id],
+      };
+      // Auto-activate Pomodoro timer on install
+      if (id === "pomodoro" && !prev.pomodoro) {
+        next.pomodoro = { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 };
+      }
+      // Auto-switch right panel to new tab when installing panel plugins
+      if (id === "heatmap-calendar") next.rightPanelTab = "heatmap";
+      if (id === "spaced-repetition") next.rightPanelTab = "flashcards";
+      if (id === "mind-map") next.rightPanelTab = "mindmap";
+      // Ensure right panel is open for panel plugins
+      if (["heatmap-calendar", "spaced-repetition", "mind-map"].includes(id)) {
+        next.rightPanelOpen = true;
+      }
+      return { ...prev, ...next };
+    });
+    // Show toast notification
+    const hint = PLUGIN_HINTS[id];
+    if (hint) {
+      setPluginToast({ message: hint, visible: true });
+      setTimeout(() => setPluginToast((t) => t ? { ...t, visible: false } : null), 4000);
+      setTimeout(() => setPluginToast(null), 4500);
+    }
   }, []);
 
   const handleMarketplaceUninstall = useCallback((id: string) => {
@@ -704,6 +744,27 @@ export default function ObsidianApp() {
   useEffect(() => {
     document.documentElement.style.setProperty("--editor-font-size", `${state.preferences.fontSize}px`);
   }, [state.preferences.fontSize]);
+
+  // Apply CSS snippets
+  useEffect(() => {
+    const snippetIds = state.enabledSnippetIds ?? [];
+    // Remove old snippet styles
+    document.querySelectorAll("style[data-snippet-id]").forEach((el) => {
+      if (!snippetIds.includes(el.getAttribute("data-snippet-id") ?? "")) {
+        el.remove();
+      }
+    });
+    // Add new snippet styles
+    snippetIds.forEach((id) => {
+      if (document.querySelector(`style[data-snippet-id="${id}"]`)) return;
+      const snippet = SAMPLE_SNIPPETS.find((s) => s.id === id);
+      if (!snippet) return;
+      const style = document.createElement("style");
+      style.setAttribute("data-snippet-id", id);
+      style.textContent = snippet.css;
+      document.head.appendChild(style);
+    });
+  }, [state.enabledSnippetIds]);
 
   // Mobile navigation handler
   const handleMobileNavigate = useCallback((view: "home" | "search" | "graph" | "new" | "settings") => {
@@ -1062,6 +1123,14 @@ export default function ObsidianApp() {
           onInstall={handleMarketplaceInstall}
           onUninstall={handleMarketplaceUninstall}
           onClose={() => patch({ marketplaceOpen: false })}
+          enabledSnippetIds={state.enabledSnippetIds}
+          onToggleSnippet={(id) => {
+            const current = state.enabledSnippetIds ?? [];
+            const next = current.includes(id)
+              ? current.filter((s) => s !== id)
+              : [...current, id];
+            patch({ enabledSnippetIds: next });
+          }}
         />
       )}
 
@@ -1122,6 +1191,25 @@ export default function ObsidianApp() {
             setAppReady(true);
           }}
         />
+      )}
+
+      {/* Plugin install toast notification */}
+      {pluginToast && (
+        <div
+          className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] max-w-md px-4 py-3 rounded-xl shadow-2xl flex items-start gap-3 transition-all duration-500"
+          style={{
+            background: "var(--color-obsidian-surface)",
+            border: "1px solid var(--color-obsidian-accent)",
+            boxShadow: "0 8px 32px rgba(124,106,247,0.3)",
+            opacity: pluginToast.visible ? 1 : 0,
+            transform: `translateX(-50%) translateY(${pluginToast.visible ? "0" : "20px"})`,
+          }}
+        >
+          <span style={{ color: "var(--color-obsidian-accent)", fontSize: "18px", lineHeight: 1, marginTop: "1px" }}>✓</span>
+          <p className="text-sm leading-snug" style={{ color: "var(--color-obsidian-text)" }}>
+            {pluginToast.message}
+          </p>
+        </div>
       )}
     </div>
   );

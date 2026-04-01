@@ -1,9 +1,31 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useMemo, useCallback } from "react";
-import { Link2, List, Info, ExternalLink, Tag, Calendar, Share2, ChevronLeft, ChevronRight, GitBranch, RotateCcw, Eye, X, Plus, Minus } from "lucide-react";
+import { Link2, List, Info, ExternalLink, Tag, Calendar, Share2, ChevronLeft, ChevronRight, GitBranch, RotateCcw, Eye, X, Plus, Minus, Brain, BookOpen, Flame } from "lucide-react";
 import { Note, NoteVersion, AppState, getBacklinks, extractWikilinks, getNoteByTitle } from "./data";
 import { diffLines, type Change } from "diff";
+
+// ─── Dynamic tab list based on installed plugins ──────────────────────────────
+
+function getTabs(installedPluginIds: string[]) {
+  const base: Array<{ id: TabId; icon: React.ElementType; label: string }> = [
+    { id: "backlinks", icon: Link2, label: "Backlinks" },
+    { id: "outline", icon: List, label: "Outline" },
+    { id: "properties", icon: Info, label: "Properties" },
+    { id: "calendar", icon: Calendar, label: "Calendar" },
+    { id: "localgraph", icon: Share2, label: "Local Graph" },
+  ];
+  if (installedPluginIds.includes("heatmap-calendar")) {
+    base.push({ id: "heatmap", icon: Flame, label: "Heatmap" });
+  }
+  if (installedPluginIds.includes("spaced-repetition")) {
+    base.push({ id: "flashcards", icon: BookOpen, label: "Flashcards" });
+  }
+  if (installedPluginIds.includes("mind-map")) {
+    base.push({ id: "mindmap", icon: Brain, label: "Mind Map" });
+  }
+  return base;
+}
 
 interface RightPanelProps {
   state: AppState;
@@ -13,15 +35,7 @@ interface RightPanelProps {
   onNewDailyNote?: (date: Date) => void;
 }
 
-const TABS = [
-  { id: "backlinks", icon: Link2, label: "Backlinks" },
-  { id: "outline", icon: List, label: "Outline" },
-  { id: "properties", icon: Info, label: "Properties" },
-  { id: "calendar", icon: Calendar, label: "Calendar" },
-  { id: "localgraph", icon: Share2, label: "Local Graph" },
-] as const;
-
-type TabId = typeof TABS[number]["id"];
+type TabId = "backlinks" | "outline" | "properties" | "calendar" | "localgraph" | "heatmap" | "flashcards" | "mindmap";
 
 // ─── Backlinks Tab ────────────────────────────────────────────────────────────
 
@@ -910,6 +924,449 @@ function LocalGraphTab({
   );
 }
 
+// ─── Heatmap Calendar Tab ─────────────────────────────────────────────────────
+
+function HeatmapTab({ notes }: { notes: Note[] }) {
+  const weeks = 52;
+  const days = 7;
+
+  // Build activity map from note creation/update dates (last 365 days)
+  const activityMap = useMemo(() => {
+    const map: Record<string, number> = {};
+    const now = new Date();
+    notes.forEach((n) => {
+      if (n.trashed) return;
+      // Count createdAt
+      const cd = n.createdAt?.split("T")[0];
+      if (cd) map[cd] = (map[cd] || 0) + 1;
+      // Count updatedAt if different
+      const ud = n.updatedAt?.split("T")[0];
+      if (ud && ud !== cd) map[ud] = (map[ud] || 0) + 1;
+      // Count version history entries
+      (n.versionHistory ?? []).forEach((v) => {
+        const vd = v.savedAt?.split("T")[0];
+        if (vd) map[vd] = (map[vd] || 0) + 1;
+      });
+    });
+    return map;
+  }, [notes]);
+
+  const maxCount = Math.max(1, ...Object.values(activityMap));
+
+  // Generate grid: 52 weeks × 7 days, ending today
+  const grid = useMemo(() => {
+    const today = new Date();
+    const todayDay = today.getDay(); // 0=Sun
+    const result: Array<{ date: string; count: number }[]> = [];
+
+    // Start from 52 weeks ago, aligned to Sunday
+    const startDate = new Date(today);
+    startDate.setDate(startDate.getDate() - (weeks * days) - todayDay);
+
+    for (let w = 0; w <= weeks; w++) {
+      const week: Array<{ date: string; count: number }> = [];
+      for (let d = 0; d < days; d++) {
+        const cellDate = new Date(startDate);
+        cellDate.setDate(cellDate.getDate() + w * 7 + d);
+        const dateStr = cellDate.toISOString().split("T")[0];
+        week.push({ date: dateStr, count: activityMap[dateStr] || 0 });
+      }
+      result.push(week);
+    }
+    return result;
+  }, [activityMap]);
+
+  const getColor = (count: number) => {
+    if (count === 0) return "rgba(255,255,255,0.04)";
+    const intensity = Math.min(count / maxCount, 1);
+    if (intensity < 0.25) return "rgba(166,227,161,0.2)";
+    if (intensity < 0.5) return "rgba(166,227,161,0.4)";
+    if (intensity < 0.75) return "rgba(166,227,161,0.6)";
+    return "rgba(166,227,161,0.9)";
+  };
+
+  const totalEdits = Object.values(activityMap).reduce((s, v) => s + v, 0);
+  const activeDays = Object.keys(activityMap).length;
+
+  return (
+    <div className="p-3">
+      <p className="text-xs font-semibold mb-3 flex items-center gap-1" style={{ color: "var(--color-obsidian-text)" }}>
+        <Flame size={12} /> Activity Heatmap
+      </p>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="rounded-lg p-2 text-center" style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+          <div className="text-sm font-bold" style={{ color: "var(--color-obsidian-accent-soft)" }}>{totalEdits}</div>
+          <div className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>Total edits</div>
+        </div>
+        <div className="rounded-lg p-2 text-center" style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+          <div className="text-sm font-bold" style={{ color: "#a6e3a1" }}>{activeDays}</div>
+          <div className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>Active days</div>
+        </div>
+      </div>
+
+      {/* Heatmap grid */}
+      <div className="overflow-x-auto">
+        <div className="flex gap-px" style={{ minWidth: "fit-content" }}>
+          {grid.map((week, wi) => (
+            <div key={wi} className="flex flex-col gap-px">
+              {week.map((cell, di) => (
+                <div
+                  key={di}
+                  className="rounded-sm"
+                  style={{
+                    width: 8,
+                    height: 8,
+                    background: getColor(cell.count),
+                  }}
+                  title={`${cell.date}: ${cell.count} edit${cell.count !== 1 ? "s" : ""}`}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Legend */}
+      <div className="flex items-center gap-1.5 mt-2">
+        <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>Less</span>
+        {[0, 0.25, 0.5, 0.75, 1].map((v, i) => (
+          <div key={i} className="rounded-sm" style={{ width: 8, height: 8, background: getColor(v * maxCount) }} />
+        ))}
+        <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>More</span>
+      </div>
+
+      {/* Month labels */}
+      <div className="mt-3 pt-2" style={{ borderTop: "1px solid var(--color-obsidian-border)" }}>
+        <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          Showing the last 12 months of vault activity based on note creation, edits, and version history.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+// ─── Spaced Repetition / Flashcards Tab ───────────────────────────────────────
+
+interface Flashcard {
+  noteId: string;
+  noteTitle: string;
+  question: string;
+  answer: string;
+}
+
+function FlashcardsTab({ notes }: { notes: Note[] }) {
+  const [flipped, setFlipped] = useState(false);
+  const [currentIdx, setCurrentIdx] = useState(0);
+  const [reviewedCount, setReviewedCount] = useState(0);
+  const [difficulty, setDifficulty] = useState<Record<string, "easy" | "medium" | "hard">>({});
+
+  // Parse flashcards from notes: lines with "Q:" / "A:" pairs, or "?" separator
+  const cards = useMemo<Flashcard[]>(() => {
+    const result: Flashcard[] = [];
+    for (const note of notes) {
+      if (note.trashed) continue;
+      const lines = note.content.split("\n");
+      for (let i = 0; i < lines.length; i++) {
+        const line = lines[i].trim();
+        // Format 1: Q: ... / A: ...
+        if (/^Q:\s/i.test(line) && i + 1 < lines.length && /^A:\s/i.test(lines[i + 1].trim())) {
+          result.push({
+            noteId: note.id,
+            noteTitle: note.title,
+            question: line.replace(/^Q:\s*/i, ""),
+            answer: lines[i + 1].trim().replace(/^A:\s*/i, ""),
+          });
+          i++; // skip answer line
+        }
+        // Format 2: Front ? Back (single-line separator)
+        else if (line.includes(" ? ") && !line.startsWith("#") && !line.startsWith("-")) {
+          const [q, ...aParts] = line.split(" ? ");
+          if (q.trim() && aParts.join(" ? ").trim()) {
+            result.push({
+              noteId: note.id,
+              noteTitle: note.title,
+              question: q.trim(),
+              answer: aParts.join(" ? ").trim(),
+            });
+          }
+        }
+      }
+    }
+    return result;
+  }, [notes]);
+
+  if (cards.length === 0) {
+    return (
+      <div className="px-4 py-6 text-center">
+        <BookOpen size={24} className="mx-auto mb-2 opacity-30" style={{ color: "var(--color-obsidian-muted-text)" }} />
+        <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>No flashcards found.</p>
+        <p className="text-xs mt-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          Add cards to your notes using:
+        </p>
+        <div className="mt-2 text-left rounded-lg p-2" style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+          <code className="text-xs block" style={{ color: "var(--color-obsidian-code-text)" }}>
+            Q: What is Obsidian?{"\n"}A: A knowledge base app
+          </code>
+          <p className="text-xs mt-1" style={{ color: "var(--color-obsidian-muted-text)" }}>or</p>
+          <code className="text-xs block" style={{ color: "var(--color-obsidian-code-text)" }}>
+            Capital of France ? Paris
+          </code>
+        </div>
+      </div>
+    );
+  }
+
+  const card = cards[currentIdx % cards.length];
+
+  const handleNext = (diff: "easy" | "medium" | "hard") => {
+    const key = `${card.noteId}-${currentIdx}`;
+    setDifficulty((prev) => ({ ...prev, [key]: diff }));
+    setReviewedCount((c) => c + 1);
+    setFlipped(false);
+    setCurrentIdx((i) => (i + 1) % cards.length);
+  };
+
+  return (
+    <div className="p-3">
+      <div className="flex items-center justify-between mb-3">
+        <p className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--color-obsidian-text)" }}>
+          <BookOpen size={12} /> Flashcards
+        </p>
+        <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          {currentIdx % cards.length + 1}/{cards.length} · {reviewedCount} reviewed
+        </span>
+      </div>
+
+      {/* Card */}
+      <div
+        className="rounded-lg p-4 cursor-pointer transition-all min-h-[120px] flex flex-col items-center justify-center text-center"
+        style={{
+          background: flipped ? "rgba(166,227,161,0.08)" : "var(--color-obsidian-bg)",
+          border: `1px solid ${flipped ? "rgba(166,227,161,0.3)" : "var(--color-obsidian-border)"}`,
+        }}
+        onClick={() => setFlipped(!flipped)}
+      >
+        <p className="text-xs mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          {flipped ? "Answer" : "Question"} · {card.noteTitle}
+        </p>
+        <p className="text-sm font-medium" style={{ color: "var(--color-obsidian-text)" }}>
+          {flipped ? card.answer : card.question}
+        </p>
+        {!flipped && (
+          <p className="text-xs mt-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            Click to reveal answer
+          </p>
+        )}
+      </div>
+
+      {/* Difficulty buttons (show after flip) */}
+      {flipped && (
+        <div className="flex gap-2 mt-3">
+          <button
+            onClick={() => handleNext("hard")}
+            className="flex-1 text-xs py-2 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ background: "rgba(243,139,168,0.2)", color: "#f38ba8" }}
+          >
+            Hard
+          </button>
+          <button
+            onClick={() => handleNext("medium")}
+            className="flex-1 text-xs py-2 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ background: "rgba(249,226,175,0.2)", color: "#f9e2af" }}
+          >
+            Medium
+          </button>
+          <button
+            onClick={() => handleNext("easy")}
+            className="flex-1 text-xs py-2 rounded-lg hover:opacity-80 transition-opacity"
+            style={{ background: "rgba(166,227,161,0.2)", color: "#a6e3a1" }}
+          >
+            Easy
+          </button>
+        </div>
+      )}
+
+      {/* Progress bar */}
+      <div className="mt-3 rounded-full overflow-hidden h-1" style={{ background: "var(--color-obsidian-border)" }}>
+        <div
+          className="h-full rounded-full transition-all"
+          style={{
+            width: `${(reviewedCount / Math.max(cards.length, 1)) * 100}%`,
+            background: "var(--color-obsidian-accent)",
+            maxWidth: "100%",
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ─── Mind Map Tab ─────────────────────────────────────────────────────────────
+
+interface MindMapNode {
+  id: string;
+  text: string;
+  level: number;
+  children: MindMapNode[];
+}
+
+function MindMapTab({ note }: { note: Note }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Parse headings into a tree structure
+  const tree = useMemo<MindMapNode>(() => {
+    const root: MindMapNode = { id: "root", text: note.title, level: 0, children: [] };
+    const stack: MindMapNode[] = [root];
+
+    note.content.split("\n").forEach((line, i) => {
+      const m = line.match(/^(#{1,6})\s+(.+)$/);
+      if (m) {
+        const level = m[1].length;
+        const node: MindMapNode = { id: `h-${i}`, text: m[2], level, children: [] };
+
+        // Find appropriate parent
+        while (stack.length > 1 && stack[stack.length - 1].level >= level) {
+          stack.pop();
+        }
+        stack[stack.length - 1].children.push(node);
+        stack.push(node);
+      }
+    });
+
+    return root;
+  }, [note.content, note.title]);
+
+  // Flatten tree for positioning
+  const flatNodes = useMemo(() => {
+    const result: Array<{ node: MindMapNode; depth: number; index: number; parentId: string | null }> = [];
+    let idx = 0;
+
+    function walk(n: MindMapNode, depth: number, parentId: string | null) {
+      result.push({ node: n, depth, index: idx++, parentId });
+      n.children.forEach((c) => walk(c, depth + 1, n.id));
+    }
+    walk(tree, 0, null);
+    return result;
+  }, [tree]);
+
+  // Render mind map
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    const rect = container.getBoundingClientRect();
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = rect.width * dpr;
+    canvas.height = Math.max(rect.height, flatNodes.length * 28 + 40) * dpr;
+    canvas.style.height = `${Math.max(rect.height, flatNodes.length * 28 + 40)}px`;
+    ctx.scale(dpr, dpr);
+
+    const w = rect.width;
+    const h = Math.max(rect.height, flatNodes.length * 28 + 40);
+
+    ctx.clearRect(0, 0, w, h);
+
+    // Position nodes
+    const positions = new Map<string, { x: number; y: number; w: number }>();
+    const nodeH = 22;
+    const gapY = 6;
+    const indentX = 24;
+    const startX = 16;
+    const startY = 16;
+
+    flatNodes.forEach((fn, i) => {
+      const x = startX + fn.depth * indentX;
+      const y = startY + i * (nodeH + gapY);
+      const textW = Math.min(ctx.measureText(fn.node.text).width + 16, w - x - 8);
+      positions.set(fn.node.id, { x, y, w: textW });
+    });
+
+    // Draw connections
+    flatNodes.forEach((fn) => {
+      if (!fn.parentId) return;
+      const parentPos = positions.get(fn.parentId);
+      const childPos = positions.get(fn.node.id);
+      if (!parentPos || !childPos) return;
+
+      ctx.beginPath();
+      ctx.moveTo(parentPos.x + 6, parentPos.y + nodeH / 2);
+      ctx.bezierCurveTo(
+        parentPos.x + 6, childPos.y + nodeH / 2,
+        childPos.x - 4, childPos.y + nodeH / 2,
+        childPos.x, childPos.y + nodeH / 2
+      );
+      ctx.strokeStyle = "rgba(124,106,247,0.3)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+    });
+
+    // Draw nodes
+    const colors = ["var(--color-obsidian-accent)", "#89b4fa", "#a6e3a1", "#f9e2af", "#f38ba8", "#cba6f7", "#fab387"];
+
+    flatNodes.forEach((fn) => {
+      const pos = positions.get(fn.node.id);
+      if (!pos) return;
+
+      const isRoot = fn.depth === 0;
+      const color = colors[fn.depth % colors.length];
+      const radius = 10;
+
+      // Node background
+      ctx.beginPath();
+      ctx.roundRect(pos.x, pos.y, pos.w, nodeH, radius);
+      ctx.fillStyle = isRoot ? "rgba(124,106,247,0.2)" : "rgba(255,255,255,0.05)";
+      ctx.fill();
+      ctx.strokeStyle = color;
+      ctx.lineWidth = isRoot ? 2 : 1;
+      ctx.stroke();
+
+      // Node text
+      ctx.fillStyle = isRoot ? "#fff" : "rgba(255,255,255,0.8)";
+      ctx.font = `${isRoot ? "bold " : ""}${isRoot ? 11 : 10}px sans-serif`;
+      ctx.textBaseline = "middle";
+      const maxTextW = pos.w - 12;
+      let text = fn.node.text;
+      while (ctx.measureText(text).width > maxTextW && text.length > 3) {
+        text = text.slice(0, -1);
+      }
+      if (text !== fn.node.text) text += "…";
+      ctx.fillText(text, pos.x + 6, pos.y + nodeH / 2);
+    });
+  }, [flatNodes]);
+
+  if (flatNodes.length <= 1) {
+    return (
+      <div className="px-4 py-6 text-center">
+        <Brain size={24} className="mx-auto mb-2 opacity-30" style={{ color: "var(--color-obsidian-muted-text)" }} />
+        <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          No headings found to build a mind map.
+        </p>
+        <p className="text-xs mt-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          Add headings (# ## ###) to see the structure.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-2">
+      <p className="text-xs font-semibold mb-2 px-1 flex items-center gap-1" style={{ color: "var(--color-obsidian-text)" }}>
+        <Brain size={12} /> Mind Map
+      </p>
+      <div ref={containerRef} className="overflow-auto" style={{ maxHeight: 400 }}>
+        <canvas ref={canvasRef} className="w-full" />
+      </div>
+    </div>
+  );
+}
+
 // ─── Main RightPanel ──────────────────────────────────────────────────────────
 
 export default function RightPanel({
@@ -919,11 +1376,13 @@ export default function RightPanel({
   onRestoreVersion,
   onNewDailyNote,
 }: RightPanelProps) {
-  const { notes, activeNoteId, rightPanelTab } = state;
+  const { notes, activeNoteId, rightPanelTab, installedPluginIds } = state;
   const activeNote = notes.find((n) => n.id === activeNoteId);
 
+  const tabs = useMemo(() => getTabs(installedPluginIds ?? []), [installedPluginIds]);
+
   // Cast to TabId, defaulting to backlinks
-  const currentTab: TabId = (TABS.some((t) => t.id === rightPanelTab) ? rightPanelTab : "backlinks") as TabId;
+  const currentTab: TabId = (tabs.some((t) => t.id === rightPanelTab) ? rightPanelTab : "backlinks") as TabId;
 
   return (
     <div
@@ -938,7 +1397,7 @@ export default function RightPanel({
         className="flex items-center shrink-0 overflow-x-auto"
         style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
       >
-        {TABS.map(({ id, icon: Icon, label }) => (
+        {tabs.map(({ id, icon: Icon, label }) => (
           <button
             key={id}
             onClick={() => onStateChange({ rightPanelTab: id as AppState["rightPanelTab"] })}
@@ -983,6 +1442,12 @@ export default function RightPanel({
           <CalendarTab notes={notes} onNoteClick={onNoteClick} onNewDailyNote={onNewDailyNote} />
         ) : currentTab === "localgraph" ? (
           <LocalGraphTab note={activeNote} notes={notes} onNoteClick={onNoteClick} />
+        ) : currentTab === "heatmap" ? (
+          <HeatmapTab notes={notes} />
+        ) : currentTab === "flashcards" ? (
+          <FlashcardsTab notes={notes} />
+        ) : currentTab === "mindmap" ? (
+          <MindMapTab note={activeNote} />
         ) : null}
       </div>
     </div>

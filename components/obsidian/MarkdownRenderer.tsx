@@ -590,10 +590,10 @@ function parseInline(
   notes?: Array<{ id: string; title: string; content: string }>
 ): React.ReactNode[] {
   const parts: React.ReactNode[] = [];
-  // Pattern: wikilinks (including block refs), embeds, bold, italic, strikethrough, highlight, inline code, external links, tags, inline math
+  // Pattern: wikilinks (including block refs), embeds, bold, italic, strikethrough, highlight, inline code, external links, tags, inline math, citations
   // Block reference pattern: [[Note^blockId]] or [[Note#heading]]
   const pattern =
-    /(!?\[\[([^\]|^#]+)(?:\^([a-zA-Z0-9_-]+))?(?:#([^\]|]+))?(?:\|([^\]]+))?\]\])|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))|(#([a-zA-Z0-9_/-]+))|(~~([^~]+)~~)|(==([^=]+)==)|(\$([^$]+)\$)/g;
+    /(!?\[\[([^\]|^#]+)(?:\^([a-zA-Z0-9_-]+))?(?:#([^\]|]+))?(?:\|([^\]]+))?\]\])|(\*\*([^*]+)\*\*)|(\*([^*]+)\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))|(#([a-zA-Z0-9_/-]+))|(~~([^~]+)~~)|(==([^=]+)==)|(\$([^$]+)\$)|(\[@([a-zA-Z0-9_-]+)\])/g;
   let lastIndex = 0;
   let match: RegExpExecArray | null;
 
@@ -777,6 +777,26 @@ function parseInline(
     } else if (match[21]) {
       // Inline math $tex$
       parts.push(<MathBlock key={match.index} tex={match[22]} display={false} />);
+    } else if (match[23]) {
+      // Citation [@key]
+      parts.push(
+        <span
+          key={match.index}
+          className="citation-ref"
+          style={{
+            color: "var(--color-obsidian-accent-soft)",
+            cursor: "pointer",
+            fontSize: "0.85em",
+            verticalAlign: "super",
+            background: "rgba(124,106,247,0.1)",
+            padding: "0 3px",
+            borderRadius: "3px",
+          }}
+          title={`Citation: ${match[24]}`}
+        >
+          [{match[24]}]
+        </span>
+      );
     }
 
     lastIndex = pattern.lastIndex;

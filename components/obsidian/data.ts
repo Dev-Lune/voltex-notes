@@ -254,7 +254,7 @@ export interface AppState {
   viewMode: "editor" | "preview" | "split";
   mainView: "editor" | "graph" | "drawing" | "canvas";
   rightPanelOpen: boolean;
-  rightPanelTab: "backlinks" | "outline" | "properties" | "calendar" | "localgraph";
+  rightPanelTab: "backlinks" | "outline" | "properties" | "calendar" | "localgraph" | "heatmap" | "flashcards" | "mindmap";
   searchQuery: string;
   commandPaletteOpen: boolean;
   authModalOpen: boolean;
@@ -266,7 +266,12 @@ export interface AppState {
   newNoteTypeMenuOpen: boolean;
   marketplaceOpen: boolean;
   installedPluginIds: string[];
+  enabledSnippetIds: string[];
   preferences: EditorPreferences;
+  /** Pomodoro timer state — only present when plugin is active */
+  pomodoro?: { running: boolean; mode: "work" | "break"; secondsLeft: number; sessions: number };
+  /** Sliding panes mode — when true, show multiple notes side by side */
+  slidingPanesEnabled?: boolean;
 }
 // ─── Editor Preferences ──────────────────────────────────────────────────────
 export interface EditorPreferences {
