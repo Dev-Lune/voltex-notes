@@ -269,7 +269,7 @@ export interface AppState {
   enabledSnippetIds: string[];
   preferences: EditorPreferences;
   /** Pomodoro timer state — only present when plugin is active */
-  pomodoro?: { running: boolean; mode: "work" | "break"; secondsLeft: number; sessions: number };
+  pomodoro?: { running: boolean; mode: "work" | "break"; secondsLeft: number; sessions: number; workMinutes: number; breakMinutes: number };
   /** Sliding panes mode — when true, show multiple notes side by side */
   slidingPanesEnabled?: boolean;
 }

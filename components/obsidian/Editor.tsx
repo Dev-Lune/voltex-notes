@@ -1588,7 +1588,12 @@ function PomodoroWidget({ state, onStateChange }: {
   state: AppState;
   onStateChange: (patch: Partial<AppState>) => void;
 }) {
-  const pom = state.pomodoro ?? { running: false, mode: "work" as const, secondsLeft: 25 * 60, sessions: 0 };
+  const pom = state.pomodoro ?? { running: false, mode: "work" as const, secondsLeft: 25 * 60, sessions: 0, workMinutes: 25, breakMinutes: 5 };
+  const workMins = pom.workMinutes ?? 25;
+  const breakMins = pom.breakMinutes ?? 5;
+  const [editing, setEditing] = useState(false);
+  const [editWork, setEditWork] = useState(String(workMins));
+  const [editBreak, setEditBreak] = useState(String(breakMins));
 
   useEffect(() => {
     if (!pom.running) return;
@@ -1598,9 +1603,10 @@ function PomodoroWidget({ state, onStateChange }: {
         const isWork = pom.mode === "work";
         onStateChange({
           pomodoro: {
+            ...pom,
             running: true,
             mode: isWork ? "break" : "work",
-            secondsLeft: isWork ? 5 * 60 : 25 * 60,
+            secondsLeft: isWork ? breakMins * 60 : workMins * 60,
             sessions: isWork ? pom.sessions + 1 : pom.sessions,
           },
         });
@@ -1609,33 +1615,92 @@ function PomodoroWidget({ state, onStateChange }: {
       }
     }, 1000);
     return () => clearInterval(interval);
-  }, [pom, onStateChange]);
+  }, [pom, onStateChange, workMins, breakMins]);
 
   const mins = Math.floor(pom.secondsLeft / 60);
   const secs = pom.secondsLeft % 60;
   const modeColor = pom.mode === "work" ? "#f38ba8" : "#a6e3a1";
 
+  const openEditor = () => {
+    if (pom.running) {
+      onStateChange({ pomodoro: { ...pom, running: false } });
+    }
+    setEditWork(String(workMins));
+    setEditBreak(String(breakMins));
+    setEditing(true);
+  };
+
+  const applyDurations = () => {
+    const w = Math.max(1, Math.min(120, parseInt(editWork) || 25));
+    const b = Math.max(1, Math.min(120, parseInt(editBreak) || 5));
+    const isWorkMode = pom.mode === "work";
+    onStateChange({
+      pomodoro: {
+        ...pom,
+        workMinutes: w,
+        breakMinutes: b,
+        running: false,
+        secondsLeft: isWorkMode ? w * 60 : b * 60,
+      },
+    });
+    setEditing(false);
+  };
+
   return (
-    <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-3 py-2 rounded-xl shadow-2xl"
+    <div className="fixed bottom-6 right-6 z-50 rounded-xl shadow-2xl"
       style={{ background: "var(--color-obsidian-surface)", border: `1px solid ${modeColor}40` }}>
-      <div className="w-2 h-2 rounded-full" style={{ background: modeColor, boxShadow: pom.running ? `0 0 6px ${modeColor}` : "none" }} />
-      <span className="text-sm font-mono font-bold tabular-nums" style={{ color: "var(--color-obsidian-text)", minWidth: "3.5em" }}>
-        {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
-      </span>
-      <span className="text-xs capitalize" style={{ color: modeColor }}>{pom.mode}</span>
-      <button onClick={() => onStateChange({ pomodoro: { ...pom, running: !pom.running } })}
-        className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-text)" }}>
-        {pom.running ? <Pause size={12} /> : <Play size={12} />}
-      </button>
-      <button onClick={() => onStateChange({ pomodoro: { running: false, mode: "work", secondsLeft: 25 * 60, sessions: pom.sessions } })}
-        className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
-        <RotateCw size={12} />
-      </button>
-      <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>#{pom.sessions}</span>
-      <button onClick={() => onStateChange({ pomodoro: undefined })}
-        className="p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
-        <X size={10} />
-      </button>
+      <div className="flex items-center gap-2 px-3 py-2">
+        <div className="w-2 h-2 rounded-full" style={{ background: modeColor, boxShadow: pom.running ? `0 0 6px ${modeColor}` : "none" }} />
+        <button
+          onClick={openEditor}
+          className="text-sm font-mono font-bold tabular-nums cursor-pointer hover:opacity-70 transition-opacity"
+          style={{ color: "var(--color-obsidian-text)", minWidth: "3.5em", background: "none", border: "none", padding: 0 }}
+          title="Click to edit duration">
+          {String(mins).padStart(2, "0")}:{String(secs).padStart(2, "0")}
+        </button>
+        <span className="text-xs capitalize" style={{ color: modeColor }}>{pom.mode}</span>
+        <button onClick={() => { onStateChange({ pomodoro: { ...pom, running: !pom.running } }); setEditing(false); }}
+          className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-text)" }}>
+          {pom.running ? <Pause size={12} /> : <Play size={12} />}
+        </button>
+        <button onClick={() => { onStateChange({ pomodoro: { ...pom, running: false, mode: "work", secondsLeft: workMins * 60, sessions: pom.sessions } }); setEditing(false); }}
+          className="p-1 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          <RotateCw size={12} />
+        </button>
+        <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>#{pom.sessions}</span>
+        <button onClick={() => onStateChange({ pomodoro: undefined })}
+          className="p-0.5 rounded hover:bg-white/10" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          <X size={10} />
+        </button>
+      </div>
+      {editing && !pom.running && (
+        <div className="flex items-center gap-2 px-3 py-2" style={{ borderTop: `1px solid ${modeColor}20` }}>
+          <div className="flex items-center gap-1">
+            <span className="text-xs" style={{ color: "#f38ba8" }}>Work</span>
+            <input
+              type="number" min={1} max={120} value={editWork}
+              onChange={(e) => setEditWork(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") applyDurations(); }}
+              className="w-10 text-xs font-mono font-bold text-center rounded px-1 py-0.5"
+              style={{ background: "var(--color-obsidian-bg)", color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)", outline: "none" }}
+            />
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs" style={{ color: "#a6e3a1" }}>Break</span>
+            <input
+              type="number" min={1} max={120} value={editBreak}
+              onChange={(e) => setEditBreak(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter") applyDurations(); }}
+              className="w-10 text-xs font-mono font-bold text-center rounded px-1 py-0.5"
+              style={{ background: "var(--color-obsidian-bg)", color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)", outline: "none" }}
+            />
+          </div>
+          <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>min</span>
+          <button onClick={applyDurations} className="p-0.5 rounded hover:bg-white/10" style={{ color: "#a6e3a1" }}>
+            <Check size={12} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2893,7 +2958,7 @@ export default function Editor({
           isLoggedIn={!!state.user}
           isMobile={isMobile}
           installedPluginIds={state.installedPluginIds}
-          onTogglePomodoro={() => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 } })}
+          onTogglePomodoro={() => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0, workMinutes: 25, breakMinutes: 5 } })}
           onToggleAIPanel={() => setShowAIPanel((v) => !v)}
           onToggleGitHistory={() => setShowGitHistory((v) => !v)}
           onToggleSlidingPanes={() => onStateChange({ slidingPanesEnabled: !state.slidingPanesEnabled })}
@@ -2919,7 +2984,7 @@ export default function Editor({
         const items: Array<{ id: string; icon: React.ReactNode; label: string; active: boolean; onClick: () => void }> = [];
         if (plugins.includes("pomodoro")) {
           items.push({ id: "pomodoro", icon: <Timer size={11} />, label: "Pomodoro Timer", active: !!state.pomodoro,
-            onClick: () => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 } }) });
+            onClick: () => onStateChange({ pomodoro: state.pomodoro ? undefined : { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0, workMinutes: 25, breakMinutes: 5 } }) });
         }
         if (plugins.includes("ai-assistant")) {
           items.push({ id: "ai", icon: <Sparkles size={11} />, label: "Writing Analytics", active: showAIPanel,

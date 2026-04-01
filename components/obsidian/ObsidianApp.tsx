@@ -704,7 +704,7 @@ export default function ObsidianApp() {
       };
       // Auto-activate Pomodoro timer on install
       if (id === "pomodoro" && !prev.pomodoro) {
-        next.pomodoro = { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0 };
+        next.pomodoro = { running: false, mode: "work", secondsLeft: 25 * 60, sessions: 0, workMinutes: 25, breakMinutes: 5 };
       }
       // Auto-switch right panel to new tab when installing panel plugins
       if (id === "heatmap-calendar") next.rightPanelTab = "heatmap";
