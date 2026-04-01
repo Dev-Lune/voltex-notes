@@ -344,6 +344,28 @@ export default function ObsidianApp() {
     }));
   }, []);
 
+  // Import markdown files
+  const importNotes = useCallback((files: { title: string; content: string }[]) => {
+    const now = new Date().toISOString().split("T")[0];
+    const newNotes: Note[] = files.map((f, i) => ({
+      id: `note-${Date.now()}-${i}`,
+      title: f.title,
+      content: f.content,
+      tags: [],
+      folder: "root",
+      createdAt: now,
+      updatedAt: now,
+      starred: false,
+      wordCount: f.content.split(/\s+/).filter(Boolean).length,
+      type: "markdown" as NoteType,
+    }));
+    setState((prev) => ({
+      ...prev,
+      notes: [...prev.notes, ...newNotes],
+    }));
+    newNotes.forEach((n) => pushNoteToFirestore(n));
+  }, [pushNoteToFirestore]);
+
   // Move note to folder
   const moveNoteToFolder = useCallback((noteId: string, folderId: string) => {
     let movedNote: Note | null = null;
@@ -434,8 +456,33 @@ export default function ObsidianApp() {
     if (restoredNote) pushNoteToFirestore(restoredNote);
   }, [pushNoteToFirestore]);
 
-  // Delete note
+  // Delete note (soft delete → moves to trash)
   const deleteNote = useCallback((id: string) => {
+    setState((prev) => {
+      const openRemaining = prev.openNoteIds.filter((oid) => oid !== id);
+      const newActive =
+        prev.activeNoteId === id
+          ? openRemaining[openRemaining.length - 1] ?? null
+          : prev.activeNoteId;
+      return {
+        ...prev,
+        notes: prev.notes.map((n) =>
+          n.id === id ? { ...n, trashed: true, trashedAt: new Date().toISOString() } : n
+        ),
+        openNoteIds: openRemaining,
+        activeNoteId: newActive,
+      };
+    });
+    // Sync the soft-deleted note to Firestore
+    setState((prev) => {
+      const trashedNote = prev.notes.find((n) => n.id === id);
+      if (trashedNote) pushNoteToFirestore(trashedNote);
+      return prev;
+    });
+  }, [pushNoteToFirestore]);
+
+  // Permanently delete note
+  const permanentlyDeleteNote = useCallback((id: string) => {
     setState((prev) => {
       const remaining = prev.notes.filter((n) => n.id !== id);
       const openRemaining = prev.openNoteIds.filter((oid) => oid !== id);
@@ -452,6 +499,36 @@ export default function ObsidianApp() {
     });
     deleteNoteFromFirestore(id);
   }, [deleteNoteFromFirestore]);
+
+  // Restore note from trash
+  const restoreNote = useCallback((id: string) => {
+    let restoredNote: Note | null = null;
+    setState((prev) => ({
+      ...prev,
+      notes: prev.notes.map((n) => {
+        if (n.id !== id) return n;
+        const updated = { ...n, trashed: false, trashedAt: undefined };
+        restoredNote = updated;
+        return updated;
+      }),
+    }));
+    if (restoredNote) pushNoteToFirestore(restoredNote);
+  }, [pushNoteToFirestore]);
+
+  // Toggle note pin
+  const togglePinNote = useCallback((id: string) => {
+    let updatedNote: Note | null = null;
+    setState((prev) => ({
+      ...prev,
+      notes: prev.notes.map((n) => {
+        if (n.id !== id) return n;
+        const updated = { ...n, pinned: !n.pinned };
+        updatedNote = updated;
+        return updated;
+      }),
+    }));
+    if (updatedNote) pushNoteToFirestore(updatedNote);
+  }, [pushNoteToFirestore]);
 
   // Rename note
   const renameNote = useCallback((id: string, title: string) => {
@@ -623,6 +700,20 @@ export default function ObsidianApp() {
           patch({ sidebarCollapsed: !state.sidebarCollapsed });
         }
       }
+      if (ctrl && e.key === "s") {
+        e.preventDefault();
+        // Manual save — trigger sync for active note
+        const active = state.notes.find((n) => n.id === state.activeNoteId);
+        if (active) pushNoteToFirestore(active);
+      }
+      if (ctrl && e.key === "d") {
+        e.preventDefault();
+        if (state.activeNoteId) deleteNote(state.activeNoteId);
+      }
+      if (ctrl && e.key === "l") {
+        e.preventDefault();
+        // Toggle checkbox on current line (handled by Editor)
+      }
       if (e.key === "Escape") {
         if (state.commandPaletteOpen) patch({ commandPaletteOpen: false });
         if (state.settingsOpen) patch({ settingsOpen: false });
@@ -635,7 +726,7 @@ export default function ObsidianApp() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [state.commandPaletteOpen, state.settingsOpen, state.authModalOpen, state.sidebarCollapsed, patch, createNote, isMobile]);
+  }, [state.commandPaletteOpen, state.settingsOpen, state.authModalOpen, state.sidebarCollapsed, state.activeNoteId, state.notes, patch, createNote, deleteNote, pushNoteToFirestore, isMobile]);
 
   const activeNote = state.notes.find((n) => n.id === state.activeNoteId);
 
@@ -701,6 +792,9 @@ export default function ObsidianApp() {
               onNoteOpen={openNote}
               onCreateFolder={createFolder}
               onMoveNoteToFolder={moveNoteToFolder}
+              onPermanentlyDelete={permanentlyDeleteNote}
+              onRestoreNote={restoreNote}
+              onTogglePin={togglePinNote}
             />
           </div>
         )}
@@ -794,6 +888,9 @@ export default function ObsidianApp() {
           onRenameNote={renameNote}
           onNoteOpen={(id) => { openNote(id); setMobileDrawerOpen(false); }}
           isMobile={true}
+          onPermanentlyDelete={permanentlyDeleteNote}
+          onRestoreNote={restoreNote}
+          onTogglePin={togglePinNote}
         />
       </MobileDrawer>
 
@@ -842,6 +939,7 @@ export default function ObsidianApp() {
           onThemeChange={handleThemeChange}
           onPreferencesChange={handlePreferencesChange}
           onOpenMarketplace={() => patch({ marketplaceOpen: true, settingsOpen: false })}
+          onImportNotes={importNotes}
         />
       )}
 

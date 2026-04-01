@@ -127,7 +127,38 @@ export default function GlobalError({
           <div className="error-summary">
             {error.message || 'Unknown error'}
           </div>
-          {error.stack && (
+          <div style={{ marginTop: '1.5rem', marginLeft: '2rem', display: 'flex', gap: '0.75rem' }}>
+            <button
+              onClick={() => window.location.reload()}
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#3b8ef5',
+                color: '#fff',
+                border: 'none',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontSize: '13px',
+                fontFamily: 'inherit',
+              }}
+            >
+              Try again
+            </button>
+            <a
+              href="/"
+              style={{
+                padding: '0.5rem 1rem',
+                background: '#e5e5e5',
+                color: '#171717',
+                borderRadius: '6px',
+                textDecoration: 'none',
+                fontSize: '13px',
+                fontFamily: 'inherit',
+              }}
+            >
+              Go home
+            </a>
+          </div>
+          {process.env.NODE_ENV === 'development' && error.stack && (
             <div className="error-details-wrapper">
               <details className="error-details">
                 <summary>

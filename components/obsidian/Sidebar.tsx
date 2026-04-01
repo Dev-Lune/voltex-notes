@@ -5,7 +5,8 @@ import {
   FileText, Search, Tag, Bookmark, Share2, Plus, ChevronRight,
   ChevronDown, Folder, Star, MoreHorizontal, Trash2, Edit3,
   FolderPlus, Cloud, CloudOff, RefreshCw, Store, Pencil,
-  CalendarDays, LayoutGrid, FileCode2, X, CheckSquare, Square
+  CalendarDays, LayoutGrid, FileCode2, X, CheckSquare, Square,
+  Pin, ArrowUpDown, RotateCcw, ArrowDownAZ, ArrowUpAZ, Clock
 } from "lucide-react";
 import {
   Note, Folder as FolderType, AppState, NoteType,
@@ -22,13 +23,19 @@ interface SidebarProps {
   onCreateFolder?: (name: string) => void;
   onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
   isMobile?: boolean;
+  onPermanentlyDelete?: (id: string) => void;
+  onRestoreNote?: (id: string) => void;
+  onTogglePin?: (id: string) => void;
 }
+
+type SortMode = "modified" | "created" | "title-asc" | "title-desc";
 
 const NAV_ICONS = [
   { id: "files", icon: FileText, label: "Files" },
   { id: "search", icon: Search, label: "Search" },
   { id: "tags", icon: Tag, label: "Tags" },
   { id: "bookmarks", icon: Bookmark, label: "Bookmarks" },
+  { id: "trash", icon: Trash2, label: "Trash" },
   { id: "graph", icon: Share2, label: "Graph" },
   { id: "marketplace", icon: Store, label: "Marketplace" },
 ] as const;
@@ -88,7 +95,7 @@ function NewNoteMenu({
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--color-obsidian-muted-text)" }}>
             New Note
           </span>
-          <button onClick={onClose}>
+          <button onClick={onClose} aria-label="Close menu">
             <X size={12} style={{ color: "var(--color-obsidian-muted-text)" }} />
           </button>
         </div>
@@ -146,6 +153,7 @@ function FileTreeItem({
   onDelete,
   onRename,
   onStarToggle,
+  onPinToggle,
   selectionMode,
   isSelected,
   onToggleSelect,
@@ -156,6 +164,7 @@ function FileTreeItem({
   onDelete: (id: string) => void;
   onRename: (id: string, title: string) => void;
   onStarToggle?: (id: string, starred: boolean) => void;
+  onPinToggle?: (id: string) => void;
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
@@ -205,6 +214,15 @@ function FileTreeItem({
           {note.starred ? "Remove bookmark" : "Bookmark"}
         </button>
       )}
+      {onPinToggle && (
+        <button
+          className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+          style={{ color: note.pinned ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)" }}
+          onClick={(e) => { e.stopPropagation(); onPinToggle(note.id); closeMenu(); }}
+        >
+          <Pin size={11} /> {note.pinned ? "Unpin" : "Pin to top"}
+        </button>
+      )}
       <div style={{ borderTop: "1px solid var(--color-obsidian-border)", margin: "2px 0" }} />
       <button
         className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
@@ -240,6 +258,7 @@ function FileTreeItem({
           className="shrink-0"
           style={{ color: isSelected ? "#f38ba8" : "var(--color-obsidian-muted-text)" }}
           onClick={(e) => { e.stopPropagation(); onToggleSelect?.(note.id); }}
+          aria-label={isSelected ? "Deselect note" : "Select note"}
         >
           {isSelected ? <CheckSquare size={13} /> : <Square size={13} />}
         </button>
@@ -263,13 +282,14 @@ function FileTreeItem({
       ) : (
         <span className="flex-1 truncate text-xs">{note.title}</span>
       )}
+      {note.pinned && <Pin size={10} style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
       {note.starred && <Star size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
       <button
         className="opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-white/10 transition-opacity"
         style={{ color: "var(--color-obsidian-muted-text)" }}
         onClick={(e) => { e.stopPropagation(); openMenu(null); }}
+        aria-label="More options"
       >
-        <MoreHorizontal size={12} />
       </button>
       {menuOpen && (
         <>
@@ -303,6 +323,7 @@ function FolderGroup({
   onRenameNote,
   onMoveNoteToFolder,
   onStarToggle,
+  onPinToggle,
   selectionMode,
   selectedIds,
   onToggleSelect,
@@ -315,6 +336,7 @@ function FolderGroup({
   onRenameNote: (id: string, title: string) => void;
   onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
   onStarToggle?: (id: string, starred: boolean) => void;
+  onPinToggle?: (id: string) => void;
   selectionMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
@@ -373,6 +395,7 @@ function FolderGroup({
             onDelete={onDeleteNote}
             onRename={onRenameNote}
             onStarToggle={onStarToggle}
+            onPinToggle={onPinToggle}
             selectionMode={selectionMode}
             isSelected={selectedIds?.has(note.id)}
             onToggleSelect={onToggleSelect}
@@ -394,8 +417,14 @@ export default function Sidebar({
   onCreateFolder,
   onMoveNoteToFolder,
   isMobile = false,
+  onPermanentlyDelete,
+  onRestoreNote,
+  onTogglePin,
 }: SidebarProps) {
-  const { notes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders } = state;
+  const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders } = state;
+  // Filter out trashed notes for normal views
+  const notes = allNotes.filter((n) => !n.trashed);
+  const trashedNotes = allNotes.filter((n) => n.trashed);
   const [newNoteMenuOpen, setNewNoteMenuOpen] = useState(false);
   const [newNoteMenuRect, setNewNoteMenuRect] = useState<{ left: number; top: number; bottom: number } | null>(null);
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -403,7 +432,25 @@ export default function Sidebar({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explorerMenu, setExplorerMenu] = useState<{ x: number; y: number } | null>(null);
+  const [sortMode, setSortMode] = useState<SortMode>("modified");
+  const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const allTags = getAllTags(notes);
+
+  // Sort notes helper
+  const sortNotes = (list: Note[]) => {
+    const pinned = list.filter((n) => n.pinned);
+    const unpinned = list.filter((n) => !n.pinned);
+    const sorter = (a: Note, b: Note) => {
+      switch (sortMode) {
+        case "modified": return (b.updatedAt || "").localeCompare(a.updatedAt || "");
+        case "created": return (b.createdAt || "").localeCompare(a.createdAt || "");
+        case "title-asc": return a.title.localeCompare(b.title);
+        case "title-desc": return b.title.localeCompare(a.title);
+        default: return 0;
+      }
+    };
+    return [...pinned.sort(sorter), ...unpinned.sort(sorter)];
+  };
 
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
@@ -572,19 +619,59 @@ export default function Sidebar({
               : sidebarView === "search" ? "Search"
               : sidebarView === "tags" ? "Tags"
               : sidebarView === "bookmarks" ? "Bookmarks"
+              : sidebarView === "trash" ? "Trash"
               : sidebarView === "marketplace" ? "Marketplace"
               : "Graph"}
           </span>
           <div className="flex items-center gap-1">
             {sidebarView === "files" && (
+              <>
               <button
                 onClick={() => selectionMode ? exitSelectionMode() : setSelectionMode(true)}
                 className="p-1 rounded hover:bg-white/10 transition-colors"
                 style={{ color: selectionMode ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}
+                aria-label={selectionMode ? "Exit selection" : "Select files"}
                 title={selectionMode ? "Exit selection" : "Select files"}
               >
                 <CheckSquare size={14} />
               </button>
+              <div className="relative">
+                <button
+                  onClick={() => setSortMenuOpen((v) => !v)}
+                  className="p-1 rounded hover:bg-white/10 transition-colors"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                  aria-label="Sort notes"
+                  title="Sort notes"
+                >
+                  <ArrowUpDown size={14} />
+                </button>
+                {sortMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-[999]" onClick={() => setSortMenuOpen(false)} />
+                    <div
+                      className="absolute right-0 top-full mt-1 z-[1000] w-44 rounded-lg overflow-hidden shadow-xl"
+                      style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+                    >
+                      {([
+                        { key: "modified" as SortMode, label: "Date modified", icon: Clock },
+                        { key: "created" as SortMode, label: "Date created", icon: Clock },
+                        { key: "title-asc" as SortMode, label: "Title A → Z", icon: ArrowDownAZ },
+                        { key: "title-desc" as SortMode, label: "Title Z → A", icon: ArrowUpAZ },
+                      ]).map(({ key, label, icon: Icon }) => (
+                        <button
+                          key={key}
+                          className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                          style={{ color: sortMode === key ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)" }}
+                          onClick={() => { setSortMode(key); setSortMenuOpen(false); }}
+                        >
+                          <Icon size={11} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+              </>
             )}
             {/* New note button with type picker */}
             <div className="relative">
@@ -653,8 +740,8 @@ export default function Sidebar({
                 onClick={exitSelectionMode}
                 className="p-0.5 rounded hover:bg-white/10 transition-colors"
                 style={{ color: "var(--color-obsidian-muted-text)" }}
+                aria-label="Exit selection mode"
               >
-                <X size={12} />
               </button>
             </div>
           </div>
@@ -774,13 +861,14 @@ export default function Sidebar({
                   onRenameNote={onRenameNote}
                   onMoveNoteToFolder={onMoveNoteToFolder}
                   onStarToggle={handleStarToggle}
+                  onPinToggle={onTogglePin}
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
                 />
               ))}
               {/* Root-level notes (no folder) */}
-              {notes.filter((n) => n.folder === "root" || !n.folder).map((note) => (
+              {sortNotes(notes.filter((n) => n.folder === "root" || !n.folder)).map((note) => (
                 <FileTreeItem
                   key={note.id}
                   note={note}
@@ -789,6 +877,7 @@ export default function Sidebar({
                   onDelete={onDeleteNote}
                   onRename={onRenameNote}
                   onStarToggle={handleStarToggle}
+                  onPinToggle={onTogglePin}
                   selectionMode={selectionMode}
                   isSelected={selectedIds.has(note.id)}
                   onToggleSelect={toggleSelect}
@@ -908,6 +997,57 @@ export default function Sidebar({
                   <span className="text-xs truncate">{note.title}</span>
                 </button>
               ))}
+            </div>
+          )}
+
+          {/* Trash */}
+          {sidebarView === "trash" && (
+            <div className="flex flex-col gap-0.5 px-2">
+              {trashedNotes.length === 0 && (
+                <p className="text-xs px-2 py-3" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  Trash is empty.
+                </p>
+              )}
+              {trashedNotes.map((note) => (
+                <div
+                  key={note.id}
+                  className="flex items-center gap-2 px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors group"
+                  style={{ color: "var(--color-obsidian-text)" }}
+                >
+                  <NoteTypeIcon type={note.type} size={11} />
+                  <span className="text-xs truncate flex-1">{note.title}</span>
+                  <span className="text-[10px] opacity-40 shrink-0 hidden group-hover:inline">
+                    {note.trashedAt ? new Date(note.trashedAt).toLocaleDateString() : ""}
+                  </span>
+                  <button
+                    onClick={() => onRestoreNote?.(note.id)}
+                    className="p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: "var(--color-obsidian-accent-soft)" }}
+                    aria-label="Restore note"
+                    title="Restore"
+                  >
+                    <RotateCcw size={11} />
+                  </button>
+                  <button
+                    onClick={() => onPermanentlyDelete?.(note.id)}
+                    className="p-0.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                    style={{ color: "#f38ba8" }}
+                    aria-label="Delete permanently"
+                    title="Delete permanently"
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                </div>
+              ))}
+              {trashedNotes.length > 0 && (
+                <button
+                  onClick={() => trashedNotes.forEach((n) => onPermanentlyDelete?.(n.id))}
+                  className="flex items-center justify-center gap-1.5 px-3 py-2 mt-2 rounded-lg text-xs hover:opacity-80 transition-opacity"
+                  style={{ background: "rgba(243,139,168,0.1)", color: "#f38ba8", border: "1px solid rgba(243,139,168,0.2)" }}
+                >
+                  <Trash2 size={11} /> Empty trash
+                </button>
+              )}
             </div>
           )}
 

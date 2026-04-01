@@ -63,10 +63,14 @@ function noteToFirestore(note: Note) {
     folder: note.folder || "root",
     tags: note.tags || [],
     starred: note.starred || false,
+    pinned: note.pinned || false,
+    trashed: note.trashed || false,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt || new Date().toISOString(),
+    wordCount: note.wordCount || 0,
     _serverUpdatedAt: serverTimestamp(),
   };
+  if (note.trashedAt) data.trashedAt = note.trashedAt;
   if (note.drawingData) data.drawingData = note.drawingData;
   return data;
 }
@@ -80,8 +84,12 @@ function firestoreToNote(data: Record<string, unknown>): Note {
     folder: (data.folder as string) || "root",
     tags: (data.tags as string[]) || [],
     starred: (data.starred as boolean) || false,
+    pinned: (data.pinned as boolean) || false,
+    trashed: (data.trashed as boolean) || false,
+    trashedAt: data.trashedAt as string | undefined,
     createdAt: data.createdAt as string,
     updatedAt: data.updatedAt as string,
+    wordCount: (data.wordCount as number) || 0,
     drawingData: data.drawingData as string | undefined,
   };
 }

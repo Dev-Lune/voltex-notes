@@ -16,6 +16,9 @@ export interface Note {
   createdAt: string;
   updatedAt: string;
   starred: boolean;
+  pinned?: boolean;
+  trashed?: boolean;
+  trashedAt?: string;
   wordCount?: number;
   type?: NoteType;
   /** Serialized Excalidraw JSON for drawing notes */
@@ -247,7 +250,7 @@ export interface AppState {
   folders: Folder[];
   activeNoteId: string | null;
   openNoteIds: string[];
-  sidebarView: "files" | "search" | "tags" | "bookmarks" | "graph" | "marketplace";
+  sidebarView: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "marketplace";
   viewMode: "editor" | "preview" | "split";
   mainView: "editor" | "graph" | "drawing" | "canvas";
   rightPanelOpen: boolean;

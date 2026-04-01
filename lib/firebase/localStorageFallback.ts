@@ -282,7 +282,7 @@ export class LocalStorageService {
   async getNote(id: string): Promise<Note | null> {
     if (this.useIndexedDB) {
       try {
-        const note = await getFromStore<Note>(STORE_NOTES, id);
+        const note = await getFromStore<Note>(STORE_NOTES, id) as Note | undefined;
         return note ?? null;
       } catch {
         this.useIndexedDB = false;
@@ -446,9 +446,9 @@ export class LocalStorageService {
   async getSettings(): Promise<Partial<FirestoreUserSettings>> {
     if (this.useIndexedDB) {
       try {
-        const result = await getFromStore<{ key: string } & Partial<FirestoreUserSettings>>(STORE_SETTINGS, "user");
+        const result = await getFromStore<{ key: string } & Partial<FirestoreUserSettings>>(STORE_SETTINGS, "user") as ({ key: string } & Partial<FirestoreUserSettings>) | undefined;
         if (result) {
-          const { key, ...settings } = result;
+          const { key: _key, ...settings } = result;
           return settings;
         }
         return {};
@@ -500,7 +500,7 @@ export class LocalStorageService {
     let lastModified: Date | null = null;
     if (this.useIndexedDB) {
       try {
-        const meta = await getFromStore<{ key: string; value: string }>(STORE_META, "lastModified");
+        const meta = await getFromStore<{ key: string; value: string }>(STORE_META, "lastModified") as { key: string; value: string } | undefined;
         if (meta) {
           lastModified = new Date(meta.value);
         }
@@ -596,7 +596,7 @@ export class LocalStorageService {
       content: note.content,
       contentSize: note.content.length,
       searchText: this.stripFrontmatter(note.content).slice(0, 10000).toLowerCase(),
-      type: note.type,
+      type: (note.type || "markdown") as FirestoreNote["type"],
       folderId: note.folder,
       folderPath: note.folder,
       tags: note.tags,
@@ -609,9 +609,9 @@ export class LocalStorageService {
       trashed: false,
       trashedAt: null,
       frontmatter: this.extractFrontmatter(note.content),
-      wordCount: note.wordCount,
+      wordCount: note.wordCount ?? 0,
       characterCount: note.content.length,
-      readingTime: Math.ceil(note.wordCount / 200),
+      readingTime: Math.ceil((note.wordCount ?? 0) / 200),
       version: (note.versionHistory?.length ?? 0) + 1,
       contentHash: this.hashContent(note.content),
       lastModifiedBy: this.deviceId,
@@ -628,7 +628,7 @@ export class LocalStorageService {
       path: folder.name,
       color: null,
       icon: null,
-      collapsed: folder.collapsed,
+      collapsed: "collapsed" in folder ? Boolean(folder.collapsed) : false,
       sortOrder: 0,
     }));
 

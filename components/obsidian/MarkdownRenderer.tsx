@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
+import DOMPurify from "dompurify";
 import {
   Info, AlertTriangle, CheckCircle, XCircle, Lightbulb,
   Quote, Flame, Bug, HelpCircle, List, Bookmark, Pencil,
@@ -108,7 +109,7 @@ function MathBlock({ tex, display }: { tex: string; display: boolean }) {
           color: "var(--color-obsidian-text)",
           overflowX: "auto",
         }}
-        dangerouslySetInnerHTML={{ __html: rendered }}
+        dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }}
       />
     );
   }
@@ -123,7 +124,7 @@ function MathBlock({ tex, display }: { tex: string; display: boolean }) {
         borderRadius: "4px",
         color: "var(--color-obsidian-text)",
       }}
-      dangerouslySetInnerHTML={{ __html: rendered }}
+      dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(rendered) }}
     />
   );
 }
@@ -400,7 +401,7 @@ function MermaidDiagram({ code }: { code: string }) {
         overflow: "auto",
       }}
     >
-      <div dangerouslySetInnerHTML={{ __html: svg }} style={{ display: "flex", justifyContent: "center" }} />
+      <div dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(svg, { USE_PROFILES: { svg: true } }) }} style={{ display: "flex", justifyContent: "center" }} />
     </div>
   );
 }
@@ -556,7 +557,7 @@ function FoldableHeading({
           </svg>
         </span>
         {React.createElement(
-          `h${level}` as keyof JSX.IntrinsicElements,
+          `h${level}` as React.ElementType,
           {
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
             style: {
@@ -1089,7 +1090,7 @@ export default function MarkdownRenderer({
       };
       elements.push(
         React.createElement(
-          `h${level}` as keyof JSX.IntrinsicElements,
+          `h${level}` as React.ElementType,
           {
             key: key++,
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),

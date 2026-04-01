@@ -1,9 +1,10 @@
 "use client";
 
 import React, { useState } from "react";
+import JSZip from "jszip";
 import {
   X, Settings, Puzzle, Cloud, Palette, Keyboard, User,
-  Shield, Download, Trash2, RefreshCw, CheckCircle, ChevronRight,
+  Shield, Download, Upload, Trash2, RefreshCw, CheckCircle, ChevronRight,
   ExternalLink, Star, Check, Monitor, Sun, Feather, Pipette, RotateCcw, ChevronDown, ChevronUp
 } from "lucide-react";
 import {
@@ -22,6 +23,7 @@ interface SettingsModalProps {
   onThemeChange: (id: string) => void;
   onPreferencesChange: (prefs: Partial<EditorPreferences>) => void;
   onOpenMarketplace: () => void;
+  onImportNotes?: (files: { title: string; content: string }[]) => void;
 }
 
 type Tab =
@@ -1282,7 +1284,7 @@ function HotkeysTab() {
 
 // ─── Account Tab ──────────────────────────────────────────────────────────────
 
-function AccountTab({ state, onSignOut }: { state: AppState; onSignOut: () => void }) {
+function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSignOut: () => void; onImportNotes?: (files: { title: string; content: string }[]) => void }) {
   const { user, notes } = state;
   if (!user) {
     return (
@@ -1347,19 +1349,17 @@ function AccountTab({ state, onSignOut }: { state: AppState; onSignOut: () => vo
 
       <div className="flex flex-col gap-2">
         <button
-          onClick={() => {
-            // Export all notes as individual .md files in a single downloadable blob
-            const lines: string[] = [];
+          onClick={async () => {
+            const zip = new JSZip();
             notes.forEach((n) => {
-              lines.push(`=== ${n.title}.md ===`);
-              lines.push(n.content);
-              lines.push("");
+              const safeName = n.title.replace(/[<>:"/\\|?*]/g, "_");
+              zip.file(`${safeName}.md`, n.content);
             });
-            const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+            const blob = await zip.generateAsync({ type: "blob" });
             const url = URL.createObjectURL(blob);
             const a = document.createElement("a");
             a.href = url;
-            a.download = `obsidian-vault-export-${new Date().toISOString().split("T")[0]}.txt`;
+            a.download = `voltex-vault-${new Date().toISOString().split("T")[0]}.zip`;
             a.click();
             URL.revokeObjectURL(url);
           }}
@@ -1372,6 +1372,34 @@ function AccountTab({ state, onSignOut }: { state: AppState; onSignOut: () => vo
         >
           <Download size={14} />
           Export vault
+        </button>
+        <button
+          onClick={() => {
+            const input = document.createElement("input");
+            input.type = "file";
+            input.accept = ".md,.markdown,.txt";
+            input.multiple = true;
+            input.onchange = async () => {
+              if (!input.files?.length) return;
+              const imported: { title: string; content: string }[] = [];
+              for (const file of Array.from(input.files)) {
+                const content = await file.text();
+                const title = file.name.replace(/\.(md|markdown|txt)$/i, "");
+                imported.push({ title, content });
+              }
+              onImportNotes?.(imported);
+            };
+            input.click();
+          }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm hover:opacity-80 transition-opacity"
+          style={{
+            background: "var(--color-obsidian-surface-2)",
+            color: "var(--color-obsidian-text)",
+            border: "1px solid var(--color-obsidian-border)",
+          }}
+        >
+          <Upload size={14} />
+          Import markdown files
         </button>
         <button
           onClick={onSignOut}
@@ -1402,6 +1430,7 @@ export default function SettingsModal({
   onThemeChange,
   onPreferencesChange,
   onOpenMarketplace,
+  onImportNotes,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
 
@@ -1501,7 +1530,7 @@ export default function SettingsModal({
             {activeTab === "hotkeys" && <HotkeysTab />}
 
             {activeTab === "account" && (
-              <AccountTab state={state} onSignOut={onSignOut} />
+              <AccountTab state={state} onSignOut={onSignOut} onImportNotes={onImportNotes} />
             )}
           </div>
         </div>

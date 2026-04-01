@@ -190,16 +190,16 @@ function FindReplaceDialog({ content, onContentChange, onClose, textareaRef }: F
           disabled={matches.length === 0}
           className="p-1.5 rounded hover:bg-white/5 disabled:opacity-30"
           style={{ color: "var(--color-obsidian-muted-text)" }}
+          aria-label="Previous match"
         >
-          <ChevronUp size={14} />
         </button>
         <button
           onClick={() => goToMatch(currentMatch + 1)}
           disabled={matches.length === 0}
           className="p-1.5 rounded hover:bg-white/5 disabled:opacity-30"
           style={{ color: "var(--color-obsidian-muted-text)" }}
+          aria-label="Next match"
         >
-          <ChevronDown size={14} />
         </button>
 
         {/* Toggle replace */}
@@ -215,7 +215,7 @@ function FindReplaceDialog({ content, onContentChange, onClose, textareaRef }: F
           <Replace size={14} />
         </button>
 
-        <button onClick={onClose} className="p-1 rounded hover:bg-white/5">
+        <button onClick={onClose} className="p-1 rounded hover:bg-white/5" aria-label="Close find and replace">
           <X size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
         </button>
       </div>
@@ -619,8 +619,8 @@ function FrontmatterEditor({
                 onClick={() => removeField(i)}
                 className="p-1 rounded hover:bg-white/10 transition-colors"
                 style={{ color: "var(--color-obsidian-muted-text)" }}
+                aria-label="Remove field"
               >
-                <X size={10} />
               </button>
             </div>
           ))}
@@ -684,8 +684,8 @@ function TabBar({
             <button
               className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity rounded"
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
+              aria-label="Close tab"
             >
-              <X size={11} />
             </button>
           </div>
         );

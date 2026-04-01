@@ -2,7 +2,7 @@
 
 **Open-source knowledge base for thinkers, builders, and writers.**
 
-Voltex Notes is a modern, full-featured note-taking app with bidirectional linking, graph view, markdown editing, cloud sync, and a plugin marketplace — built with Next.js and React.
+Voltex Notes is a modern, full-featured note-taking app with bidirectional linking, graph view, markdown editing, real-time cloud sync, shareable notes, and a plugin marketplace — powered by Next.js, React, and Firebase.
 
 <p align="center">
   <img src="public/voltex-icon.svg" width="128" alt="Voltex Notes logo" />
@@ -37,11 +37,24 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 - **Multi-select** — select multiple files and bulk delete
 - **Advanced search** — operators like `tag:`, `path:`, `file:`, `type:`, `has:`, `line:`, `-tag:`
 
-### Cloud & Sync
-- **Firebase cloud sync** — real-time sync across devices
-- **Offline mode** — full offline support with local storage fallback
-- **Conflict resolution** — configurable merge strategies
+### Authentication
+- **Email & Password** — sign up and log in with email/password via Firebase Auth
+- **Google Sign-In** — one-click Google authentication
+- **Profile management** — update display name and profile info
+- **Secure sessions** — persistent login state across browser sessions
+
+### Cloud & Real-Time Sync
+- **Real-time Firestore sync** — notes sync instantly across all devices via Firestore `onSnapshot` listeners
+- **Offline-first** — full offline support with localStorage fallback; works without an account
+- **Theme sync** — selected theme and preferences sync across devices when logged in
+- **Version history** — diff-based version snapshots stored per note with one-click rollback
+- **Conflict resolution** — configurable merge strategies for concurrent edits
 - **Export** — download vault as text or individual notes as markdown
+
+### Sharing
+- **Public share links** — generate a shareable URL for any note with one click
+- **Read-only viewer** — shared notes render in a clean, branded public page with markdown formatting
+- **Firestore-backed** — shared notes stored securely; only the owner can update or revoke
 
 ### Plugin Marketplace
 - **13+ plugins** — Excalidraw drawing, Kanban boards, Git sync, Mind maps, AI assistant, and more
@@ -50,9 +63,10 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 - **Feature gating** — drawing and kanban note types require their plugins
 
 ### Themes
-- **8 built-in themes** — Default, Nord, Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin, Rosé Pine
+- **9 built-in themes** — Voltex Dark (default), Nord, Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin, Rosé Pine, and more
 - **Custom theme editor** — create and apply custom color palettes
 - **Live preview** — see theme changes in real-time
+- **Cross-device sync** — theme preference syncs via Firestore when logged in
 
 ### Note Types
 - **Markdown** — rich text with wiki-links and formatting
@@ -77,7 +91,7 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 | Styling | [Tailwind CSS 4](https://tailwindcss.com/) |
 | Icons | [Lucide React](https://lucide.dev/) |
 | Components | [Radix UI](https://www.radix-ui.com/) + [shadcn/ui](https://ui.shadcn.com/) |
-| Backend | [Firebase](https://firebase.google.com/) (Auth + Firestore) |
+| Backend | [Firebase](https://firebase.google.com/) (Auth + Firestore + real-time sync) |
 | Deployment | [Vercel](https://vercel.com/) |
 
 ---
@@ -120,6 +134,7 @@ voltex-notes/
 ├── app/                    # Next.js app router
 │   ├── layout.tsx          # Root layout with metadata
 │   ├── page.tsx            # Main entry point
+│   ├── share/[id]/         # Public shared note viewer
 │   └── api/                # API routes (marketplace)
 ├── components/
 │   ├── obsidian/           # Core app components
@@ -136,7 +151,7 @@ voltex-notes/
 │   │   └── ...
 │   └── ui/                 # shadcn/ui components
 ├── lib/
-│   ├── firebase/           # Firebase config & sync
+│   ├── firebase/           # Firebase Auth, Firestore sync, offline fallback
 │   └── marketplace/        # Marketplace data & types
 ├── public/                 # Static assets & logos
 ├── scripts/                # Build scripts
@@ -162,13 +177,15 @@ voltex-notes/
 
 ## Configuration
 
-### Firebase Setup (Optional)
+### Firebase Setup
+
+Firebase powers authentication, real-time sync, and note sharing. The app works fully offline without Firebase, but cloud features require it.
 
 1. Create a project at [console.firebase.google.com](https://console.firebase.google.com)
-2. Enable **Authentication** (Email/Password provider)
-3. Enable **Firestore Database**
-4. Register a **Web App** and copy the config values
-5. The app works fully offline without Firebase
+2. Enable **Authentication** → Email/Password and Google sign-in providers
+3. Enable **Firestore Database** in production mode
+4. Deploy Firestore security rules: `firebase deploy --only firestore:rules`
+5. Register a **Web App** and copy the config values into `.env.local`
 
 ### Environment Variables
 
