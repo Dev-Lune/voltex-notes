@@ -2,10 +2,17 @@
 
 **Open-source knowledge base for thinkers, builders, and writers.**
 
-Voltex Notes is a modern, full-featured note-taking app with bidirectional linking, graph view, markdown editing, real-time cloud sync, shareable notes, and a plugin marketplace — powered by Next.js, React, and Firebase.
+Voltex Notes is a modern, full-featured note-taking app with bidirectional linking, graph view, markdown editing, real-time cloud sync, shareable notes, and a plugin marketplace — available as a **web app** and a **Windows desktop app**.
 
 <p align="center">
   <img src="public/voltex-icon.svg" width="128" alt="Voltex Notes logo" />
+</p>
+
+<p align="center">
+  <a href="https://voltex.devlune.in">Website</a> ·
+  <a href="https://voltex.devlune.in/notes">Web App</a> ·
+  <a href="https://github.com/Dev-Lune/voltex-notes/releases/latest">Download Desktop</a> ·
+  <a href="https://github.com/Dev-Lune/voltex-notes/issues">Report Bug</a>
 </p>
 
 ---
@@ -92,7 +99,8 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 | Icons | [Lucide React](https://lucide.dev/) |
 | Components | [Radix UI](https://www.radix-ui.com/) + [shadcn/ui](https://ui.shadcn.com/) |
 | Backend | [Firebase](https://firebase.google.com/) (Auth + Firestore + real-time sync) |
-| Deployment | [Vercel](https://vercel.com/) |
+| Desktop | [Electron](https://www.electronjs.org/) with auto-updates |
+| Deployment | [Vercel](https://vercel.com/) (web) · [GitHub Releases](https://github.com/Dev-Lune/voltex-notes/releases) (desktop) |
 
 ---
 
@@ -112,18 +120,28 @@ cd voltex-notes
 # Install dependencies
 npm install
 
-# Start development server
+# Start development server (web)
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) in your browser.
+Open [http://localhost:3000](http://localhost:3000) in your browser. The landing page is at `/` and the notes app is at `/notes`.
 
 ### Build for Production
 
 ```bash
-npm run build
-npm start
+npm run build    # Web production build
+npm start        # Start production server
 ```
+
+### Desktop App (Electron)
+
+```bash
+npm run electron:dev     # Dev mode (Next.js + Electron)
+npm run electron:build   # Build .exe installer locally
+npm run electron:publish # Build + publish to GitHub Releases
+```
+
+See [docs/RELEASE.md](docs/RELEASE.md) for full release instructions.
 
 ---
 
@@ -133,7 +151,8 @@ npm start
 voltex-notes/
 ├── app/                    # Next.js app router
 │   ├── layout.tsx          # Root layout with metadata
-│   ├── page.tsx            # Main entry point
+│   ├── page.tsx            # Landing homepage
+│   ├── notes/page.tsx      # Notes app entry
 │   ├── share/[id]/         # Public shared note viewer
 │   └── api/                # API routes (marketplace)
 ├── components/
@@ -150,12 +169,13 @@ voltex-notes/
 │   │   ├── data.ts         # Types, sample data, utilities
 │   │   └── ...
 │   └── ui/                 # shadcn/ui components
+├── electron/               # Electron main + preload
 ├── lib/
 │   ├── firebase/           # Firebase Auth, Firestore sync, offline fallback
 │   └── marketplace/        # Marketplace data & types
 ├── public/                 # Static assets & logos
-├── scripts/                # Build scripts
-└── docs/                   # Documentation
+├── scripts/                # Build scripts (esbuild for Electron)
+└── docs/                   # Documentation (RELEASE.md)
 ```
 
 ---

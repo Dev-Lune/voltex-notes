@@ -995,7 +995,7 @@ export default function ObsidianApp() {
   return (
     <div
       ref={mainRef}
-      className="flex flex-col h-screen overflow-hidden"
+      className="obsidian-app-root flex flex-col h-screen overflow-hidden"
       style={{ background: "var(--color-obsidian-bg)" }}
     >
       {/* Desktop Title bar */}

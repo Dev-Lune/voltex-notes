@@ -57,4 +57,5 @@ VoltexNotes.txt
 
 .github/
 .ignore/
-docs/
+docs/superpowers
+docs/FEATURE_COMPARISON.md

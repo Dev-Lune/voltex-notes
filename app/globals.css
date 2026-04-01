@@ -120,9 +120,12 @@
   }
   html, body {
     height: 100%;
-    overflow: hidden;
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
+  }
+  /* Notes app needs no scroll; homepage needs it */
+  html:has(.obsidian-app-root), html:has(.obsidian-app-root) body {
+    overflow: hidden;
   }
   body {
     @apply bg-background text-foreground font-sans antialiased;
@@ -810,4 +813,114 @@ textarea:focus-visible {
 .hover-preview-body .hover-preview-content blockquote {
   margin: 0.3em 0 !important;
   padding: 0.2em 0.6em !important;
+}
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   Homepage — Footer
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.hp-footer {
+  position: relative;
+  z-index: 1;
+  border-top: 1px solid rgba(255, 255, 255, 0.04);
+  padding: 40px 24px;
+  background: #0A0A0F;
+}
+
+.hp-footer-inner {
+  max-width: 1100px;
+  margin: 0 auto;
+}
+
+.hp-footer-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.hp-footer-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.hp-footer-links {
+  display: flex;
+  gap: 24px;
+}
+
+.hp-footer-links a {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #555572;
+  text-decoration: none;
+  font-size: 0.85rem;
+  transition: color 0.2s;
+}
+
+.hp-footer-links a:hover {
+  color: #F0F0F5;
+}
+
+.hp-footer-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.04);
+  margin: 24px 0;
+}
+
+.hp-footer-bottom {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.hp-footer-copy {
+  font-size: 0.8rem;
+  color: #555572;
+  margin: 0;
+}
+
+/* DevLune inline branding */
+.hp-devlune-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  text-decoration: none;
+  padding: 6px 14px 6px 10px;
+  border-radius: 8px;
+  border: 1px solid rgba(79, 142, 247, 0.10);
+  background: rgba(79, 142, 247, 0.04);
+  transition: all 0.2s ease;
+}
+
+.hp-devlune-link:hover {
+  background: rgba(79, 142, 247, 0.08);
+  border-color: rgba(79, 142, 247, 0.22);
+  box-shadow: 0 0 0 3px rgba(79, 142, 247, 0.05);
+}
+
+.hp-devlune-label {
+  font-size: 0.8rem;
+  color: #555572;
+  letter-spacing: 0.005em;
+}
+
+@media (max-width: 900px) {
+  .hp-footer-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .hp-footer-bottom {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
 }
