@@ -469,25 +469,42 @@ export default function Sidebar({
     setRootDragOver(false);
     // External file drop from OS
     if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      Array.from(e.dataTransfer.files).forEach((file) => {
-        if (file.name.endsWith(".md") || file.name.endsWith(".txt") || file.type.startsWith("text/")) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const content = reader.result as string;
-            const title = file.name.replace(/\.(md|txt)$/, "");
-            onNewNote("markdown");
-            // Patch the just-created note with the file content
-            const newest = allNotes.reduce((a, b) =>
-              new Date(b.createdAt) > new Date(a.createdAt) ? b : a
-            );
-            onRenameNote(newest.id, title);
-            onStateChange({
-              notes: allNotes.map((n) =>
-                n.id === newest.id ? { ...n, title, content } : n
-              ),
-            });
-          };
-          reader.readAsText(file);
+      const textFiles = Array.from(e.dataTransfer.files).filter(
+        (file) => file.name.endsWith(".md") || file.name.endsWith(".txt") || file.type.startsWith("text/")
+      );
+      if (textFiles.length === 0) return;
+      Promise.all(
+        textFiles.map(
+          (file) =>
+            new Promise<Note>((resolve) => {
+              const reader = new FileReader();
+              reader.onload = () => {
+                const content = reader.result as string;
+                const title = file.name.replace(/\.(md|txt)$/, "");
+                const now = new Date().toISOString().split("T")[0];
+                resolve({
+                  id: `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  title,
+                  content,
+                  tags: [],
+                  folder: "root",
+                  createdAt: now,
+                  updatedAt: now,
+                  starred: false,
+                  wordCount: 0,
+                  type: "markdown",
+                });
+              };
+              reader.readAsText(file);
+            })
+        )
+      ).then((importedNotes) => {
+        if (importedNotes.length > 0) {
+          onStateChange({
+            notes: [...allNotes, ...importedNotes],
+            activeNoteId: importedNotes[0].id,
+            openNoteIds: [...state.openNoteIds, ...importedNotes.map((n) => n.id)],
+          });
         }
       });
       return;

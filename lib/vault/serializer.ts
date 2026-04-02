@@ -121,10 +121,10 @@ export function markdownToNote(filePath: string, raw: string): Note {
   const filename = basename.endsWith('.md') ? basename.slice(0, -3) : basename
 
   return {
-    id: (data.id as string) || `note-${Date.now()}`,
+    id: (data.id as string) || `note-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     title: (data.title as string) || filename,
     content: content.trim(),
-    tags: Array.isArray(data.tags) ? data.tags : [],
+    tags: Array.isArray(data.tags) ? data.tags : typeof data.tags === 'string' ? [data.tags] : [],
     folder: (data.folder as string) || 'root',
     createdAt: (data.createdAt as string) || new Date().toISOString(),
     updatedAt: (data.updatedAt as string) || new Date().toISOString(),
