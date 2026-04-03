@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef, useState, useCallback } from "react";
 import {
-  Eye, Edit3, Columns2, Star, StarOff, X, Plus, Share2,
+  Eye, Edit3, Star, StarOff, X, Plus, Share2,
   MoreHorizontal, Bold, Italic, Code, Link, List, ListOrdered,
   Heading1, Heading2, Quote, Minus, CheckSquare, Hash, Pencil,
   CalendarDays, LayoutGrid, Search, Replace, ChevronDown, ChevronUp,
@@ -1218,7 +1218,7 @@ function Toolbar({
     { icon: Table2, title: "Table", insert: "__table__" },
   ];
 
-  const showFormatting = !isDrawing && viewMode !== "preview" && !!note;
+  const showFormatting = !isDrawing && viewMode === "editor" && !!note;
 
   return (
     <>
@@ -1235,13 +1235,14 @@ function Toolbar({
               {(
                 isMobile
                   ? [
-                      { mode: "editor" as const, icon: Edit3, title: "Edit" },
-                      { mode: "preview" as const, icon: Eye, title: "Preview" },
+                      { mode: "live" as const, icon: Eye, title: "Live Preview" },
+                      { mode: "editor" as const, icon: Edit3, title: "Source" },
+                      { mode: "preview" as const, icon: BookOpen, title: "Reading" },
                     ]
                   : [
-                      { mode: "editor" as const, icon: Edit3, title: "Edit (Ctrl+E)" },
-                      { mode: "split" as const, icon: Columns2, title: "Split view" },
-                      { mode: "preview" as const, icon: Eye, title: "Preview (Ctrl+E)" },
+                      { mode: "live" as const, icon: Eye, title: "Live Preview (Ctrl+E)" },
+                      { mode: "editor" as const, icon: Edit3, title: "Source mode (Ctrl+E)" },
+                      { mode: "preview" as const, icon: BookOpen, title: "Reading mode (Ctrl+E)" },
                     ]
               ).map(({ mode, icon: Icon, title }) => (
                 <button
@@ -2340,6 +2341,391 @@ function PreviewPane({
   );
 }
 
+// ─── Live Preview Pane ────────────────────────────────────────────────────────
+
+interface LiveBlock {
+  text: string;
+  type: "text" | "code" | "empty";
+  startLine: number;
+}
+
+function parseLiveBlocks(content: string): LiveBlock[] {
+  const lines = content.split("\n");
+  const blocks: LiveBlock[] = [];
+  let current: string[] = [];
+  let currentStart = 0;
+  let inCodeBlock = false;
+
+  const flush = (type: "text" | "code") => {
+    if (current.length > 0) {
+      blocks.push({ text: current.join("\n"), type, startLine: currentStart });
+      current = [];
+    }
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (line.trimStart().startsWith("```")) {
+      if (inCodeBlock) {
+        current.push(line);
+        flush("code");
+        inCodeBlock = false;
+      } else {
+        flush("text");
+        currentStart = i;
+        current.push(line);
+        inCodeBlock = true;
+      }
+    } else if (inCodeBlock) {
+      current.push(line);
+    } else if (line.trim() === "") {
+      flush("text");
+      blocks.push({ text: "", type: "empty", startLine: i });
+    } else {
+      if (current.length === 0) currentStart = i;
+      current.push(line);
+    }
+  }
+  flush(inCodeBlock ? "code" : "text");
+  return blocks;
+}
+
+function LivePreviewPane({
+  note,
+  notes,
+  onContentChange,
+  onTitleChange,
+  onWikilinkClick,
+  onHoverLink,
+  onHoverEnd,
+  onToggleCheckbox,
+  onAddTag,
+  preferences,
+  onLinkAutocomplete,
+  onCloseAutocomplete,
+  installedPluginIds,
+}: {
+  note: Note;
+  notes: Note[];
+  onContentChange: (v: string) => void;
+  onTitleChange: (title: string) => void;
+  onWikilinkClick: (title: string) => void;
+  onHoverLink?: (title: string, rect: DOMRect) => void;
+  onHoverEnd?: () => void;
+  onToggleCheckbox?: (lineIndex: number) => void;
+  onAddTag?: (tag: string) => void;
+  preferences?: AppState["preferences"];
+  onLinkAutocomplete?: (data: { filter: string; position: { top: number; left: number } } | null) => void;
+  onCloseAutocomplete?: () => void;
+  installedPluginIds?: string[];
+}) {
+  const [activeBlockIdx, setActiveBlockIdx] = useState<number | null>(null);
+  const [addingTag, setAddingTag] = useState(false);
+  const [newTagValue, setNewTagValue] = useState("");
+  const blockTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const fontSize = preferences?.fontSize ?? 16;
+  const readableLength = preferences?.readableLineLength ?? true;
+  const spellCheckEnabled = preferences?.spellCheck ?? false;
+
+  const blocks = parseLiveBlocks(note.content);
+
+  // Auto-resize textarea when active
+  useEffect(() => {
+    if (blockTextareaRef.current && activeBlockIdx !== null) {
+      const ta = blockTextareaRef.current;
+      ta.style.height = "auto";
+      ta.style.height = `${ta.scrollHeight}px`;
+      ta.focus();
+    }
+  }, [activeBlockIdx]);
+
+  const updateBlock = (blockIdx: number, newText: string) => {
+    const newBlocks = blocks.map((b, i) => (i === blockIdx ? { ...b, text: newText } : b));
+    const newContent = newBlocks.map((b) => b.text).join("\n");
+    onContentChange(newContent);
+  };
+
+  const handleBlockClick = (idx: number) => {
+    if (blocks[idx].type === "empty") return;
+    setActiveBlockIdx(idx);
+  };
+
+  const handleBlockBlur = () => {
+    // Small delay to allow clicking between blocks without flicker
+    setTimeout(() => {
+      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
+        setActiveBlockIdx(null);
+      }
+    }, 100);
+  };
+
+  const handleBlockKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, blockIdx: number) => {
+    const ta = e.currentTarget;
+    const { selectionStart, selectionEnd, value } = ta;
+
+    // Enter at end of block — create new block below
+    if (e.key === "Enter" && selectionStart === value.length && !e.shiftKey) {
+      // Smart list continuation
+      const lines = value.split("\n");
+      const lastLine = lines[lines.length - 1];
+      const bulletMatch = lastLine.match(/^(\s*)([-*+])\s(.*)$/);
+      const numberedMatch = lastLine.match(/^(\s*)(\d+)\.\s(.*)$/);
+      const taskMatch = lastLine.match(/^(\s*)([-*+])\s\[[ x]\]\s(.*)$/);
+
+      if (taskMatch || bulletMatch || numberedMatch) {
+        // Let the textarea handle list continuation naturally
+        return;
+      }
+
+      // At end of block, split to create new empty block below
+      e.preventDefault();
+      const contentLines = note.content.split("\n");
+      const block = blocks[blockIdx];
+      const insertLineIdx = block.startLine + block.text.split("\n").length;
+      contentLines.splice(insertLineIdx, 0, "", "");
+      onContentChange(contentLines.join("\n"));
+      // Move to next text block
+      setTimeout(() => setActiveBlockIdx(blockIdx + 2), 50);
+      return;
+    }
+
+    // Backspace at start of block — merge with previous
+    if (e.key === "Backspace" && selectionStart === 0 && selectionEnd === 0 && blockIdx > 0) {
+      e.preventDefault();
+      const prevBlockIdx = blockIdx - 1;
+      // If previous block is empty, remove it
+      if (blocks[prevBlockIdx].type === "empty") {
+        const contentLines = note.content.split("\n");
+        contentLines.splice(blocks[prevBlockIdx].startLine, 1);
+        onContentChange(contentLines.join("\n"));
+        setActiveBlockIdx(blockIdx - 1);
+        return;
+      }
+      // Merge with previous text block
+      const prevText = blocks[prevBlockIdx].text;
+      const mergedText = prevText + "\n" + value;
+      const contentLines = note.content.split("\n");
+      const prevStart = blocks[prevBlockIdx].startLine;
+      const currentEnd = blocks[blockIdx].startLine + blocks[blockIdx].text.split("\n").length;
+      contentLines.splice(prevStart, currentEnd - prevStart, ...mergedText.split("\n"));
+      onContentChange(contentLines.join("\n"));
+      setActiveBlockIdx(prevBlockIdx);
+      return;
+    }
+
+    // ArrowUp at first line of block — move to previous block
+    if (e.key === "ArrowUp" && selectionStart === selectionEnd) {
+      const linesBefore = value.substring(0, selectionStart).split("\n");
+      if (linesBefore.length === 1) {
+        e.preventDefault();
+        for (let i = blockIdx - 1; i >= 0; i--) {
+          if (blocks[i].type !== "empty") {
+            setActiveBlockIdx(i);
+            break;
+          }
+        }
+      }
+    }
+
+    // ArrowDown at last line of block — move to next block
+    if (e.key === "ArrowDown" && selectionStart === selectionEnd) {
+      const linesAfter = value.substring(selectionStart).split("\n");
+      if (linesAfter.length === 1) {
+        e.preventDefault();
+        for (let i = blockIdx + 1; i < blocks.length; i++) {
+          if (blocks[i].type !== "empty") {
+            setActiveBlockIdx(i);
+            break;
+          }
+        }
+      }
+    }
+
+    // Auto-pair brackets
+    const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
+    if (pairs[e.key]) {
+      e.preventDefault();
+      const before = value.substring(0, selectionStart);
+      const after = value.substring(selectionEnd);
+      const selected = value.substring(selectionStart, selectionEnd);
+      const newValue = before + e.key + selected + pairs[e.key] + after;
+      updateBlock(blockIdx, newValue);
+      setTimeout(() => ta.setSelectionRange(selectionStart + 1, selectionStart + 1 + selected.length), 0);
+    }
+  };
+
+  const handleBlockInput = (e: React.ChangeEvent<HTMLTextAreaElement>, blockIdx: number) => {
+    const ta = e.target;
+    const newValue = ta.value;
+    updateBlock(blockIdx, newValue);
+
+    // Auto-resize
+    ta.style.height = "auto";
+    ta.style.height = `${ta.scrollHeight}px`;
+
+    // Link autocomplete
+    const { selectionStart, value } = ta;
+    const beforeCursor = value.substring(0, selectionStart);
+    const lastOpen = beforeCursor.lastIndexOf("[[");
+    const lastClose = beforeCursor.lastIndexOf("]]");
+    if (lastOpen > lastClose && lastOpen !== -1) {
+      const filter = beforeCursor.substring(lastOpen + 2);
+      if (!filter.includes("\n") && filter.length < 50) {
+        const rect = ta.getBoundingClientRect();
+        const linesBefore = beforeCursor.split("\n").length;
+        onLinkAutocomplete?.({ filter, position: { top: rect.top + linesBefore * 24, left: rect.left + 32 } });
+        return;
+      }
+    }
+    onCloseAutocomplete?.();
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto" ref={containerRef}>
+      <div className="editor-content-area mx-auto px-10 pt-10 pb-20 md:pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
+        {/* Title */}
+        <input
+          className="editor-title w-full bg-transparent outline-none text-3xl font-bold mb-1"
+          style={{ color: "var(--color-obsidian-text)", lineHeight: 1.3 }}
+          value={note.title}
+          onChange={(e) => onTitleChange(e.target.value)}
+          placeholder="Untitled"
+          onClick={() => setActiveBlockIdx(null)}
+        />
+        {/* Tags */}
+        <div className="flex items-center gap-2 mb-4 flex-wrap">
+          {note.tags.map((tag) => (
+            <span
+              key={tag}
+              className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
+              style={{ background: "var(--color-obsidian-tag-bg)", color: "var(--color-obsidian-tag)" }}
+            >
+              #{tag}
+            </span>
+          ))}
+          {addingTag ? (
+            <input
+              autoFocus
+              className="text-xs px-2 py-0.5 rounded-full bg-transparent outline-none w-24"
+              style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-accent)" }}
+              placeholder="tag name"
+              value={newTagValue}
+              onChange={(e) => setNewTagValue(e.target.value.replace(/\s/g, "-"))}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && newTagValue.trim()) {
+                  onAddTag?.(newTagValue.trim());
+                  setNewTagValue(""); setAddingTag(false);
+                }
+                if (e.key === "Escape") { setNewTagValue(""); setAddingTag(false); }
+              }}
+              onBlur={() => {
+                if (newTagValue.trim()) onAddTag?.(newTagValue.trim());
+                setNewTagValue(""); setAddingTag(false);
+              }}
+            />
+          ) : (
+            <button
+              onClick={() => setAddingTag(true)}
+              className="text-xs px-2 py-0.5 rounded-full border border-dashed opacity-60 hover:opacity-100 transition-opacity focus:opacity-100"
+              style={{ color: "var(--color-obsidian-muted-text)", borderColor: "var(--color-obsidian-border)" }}
+            >
+              + tag
+            </button>
+          )}
+        </div>
+        {/* Frontmatter */}
+        <FrontmatterEditor content={note.content} onContentChange={onContentChange} />
+        {/* Blocks */}
+        <div className="live-preview-blocks">
+          {blocks.map((block, idx) => {
+            if (block.type === "empty") {
+              return (
+                <div
+                  key={`empty-${idx}`}
+                  className="h-[1.8em] cursor-text"
+                  onClick={() => {
+                    // clicking empty line activates next text block or creates one
+                    for (let i = idx + 1; i < blocks.length; i++) {
+                      if (blocks[i].type !== "empty") { setActiveBlockIdx(i); return; }
+                    }
+                  }}
+                />
+              );
+            }
+
+            if (activeBlockIdx === idx) {
+              // Active block — show raw markdown textarea
+              return (
+                <div key={`edit-${idx}`} className="live-block-editing">
+                  <textarea
+                    ref={blockTextareaRef}
+                    className="w-full bg-transparent outline-none resize-none"
+                    style={{
+                      color: "var(--color-obsidian-text)",
+                      fontSize,
+                      lineHeight: 1.8,
+                      minHeight: "1.8em",
+                      caretColor: "var(--color-obsidian-accent-soft)",
+                      fontFamily: "var(--font-mono)",
+                      background: "rgba(124,106,247,0.04)",
+                      borderRadius: 6,
+                      padding: "4px 8px",
+                      margin: "-4px -8px",
+                      borderLeft: "2px solid var(--color-obsidian-accent)",
+                    }}
+                    value={block.text}
+                    onChange={(e) => handleBlockInput(e, idx)}
+                    onKeyDown={(e) => handleBlockKeyDown(e, idx)}
+                    onBlur={handleBlockBlur}
+                    spellCheck={spellCheckEnabled}
+                  />
+                </div>
+              );
+            }
+
+            // Rendered block — show markdown output
+            return (
+              <div
+                key={`render-${idx}`}
+                className="live-block-rendered cursor-text rounded transition-colors hover:bg-white/[0.02]"
+                style={{ padding: "0 0", minHeight: "1em" }}
+                onClick={() => handleBlockClick(idx)}
+              >
+                <MarkdownRenderer
+                  content={block.text}
+                  notes={notes}
+                  onWikilinkClick={onWikilinkClick}
+                  onHoverLink={onHoverLink}
+                  onHoverEnd={onHoverEnd}
+                  onToggleCheckbox={(lineIndex) => {
+                    onToggleCheckbox?.(block.startLine + lineIndex);
+                  }}
+                />
+              </div>
+            );
+          })}
+          {/* Click area at bottom to add content */}
+          <div
+            className="cursor-text"
+            style={{ minHeight: "30vh" }}
+            onClick={() => {
+              // Activate last block or create new content
+              if (blocks.length > 0) {
+                const lastTextBlock = [...blocks].reverse().find((b) => b.type !== "empty");
+                if (lastTextBlock) {
+                  setActiveBlockIdx(blocks.indexOf(lastTextBlock));
+                }
+              }
+            }}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Daily note template renderer ────────────────────────────────────────────
 
 function DailyNoteView({
@@ -2668,8 +3054,8 @@ export default function Editor({
   dirtyNoteIds,
 }: EditorProps) {
   const { notes, activeNoteId, openNoteIds } = state;
-  // On mobile, force split view to editor mode
-  const viewMode = isMobile && state.viewMode === "split" ? "editor" : state.viewMode;
+  // On mobile, force split view to live mode
+  const viewMode = isMobile && state.viewMode === "editor" ? "live" : state.viewMode;
   const activeNote = notes.find((n) => n.id === activeNoteId) ?? null;
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [wordCount, setWordCount] = useState(0);
@@ -2919,7 +3305,26 @@ export default function Editor({
       return <KanbanView note={activeNote} onNoteChange={onNoteChange} />;
     }
 
-    // Markdown — split/edit/preview
+    // Markdown — live/editor/preview
+    if (viewMode === "live") {
+      return (
+        <LivePreviewPane
+          note={activeNote}
+          notes={notes}
+          onContentChange={handleContentChange}
+          onTitleChange={handleTitleChange}
+          onWikilinkClick={handleWikilinkClick}
+          onHoverLink={handleHoverLink}
+          onHoverEnd={handleHoverEnd}
+          onToggleCheckbox={handleToggleCheckbox}
+          onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
+          preferences={state.preferences}
+          onLinkAutocomplete={setLinkAutocomplete}
+          onCloseAutocomplete={() => setLinkAutocomplete(null)}
+          installedPluginIds={state.installedPluginIds}
+        />
+      );
+    }
     if (viewMode === "editor") {
       return (
         <EditorPane
@@ -2937,50 +3342,16 @@ export default function Editor({
         />
       );
     }
-    if (viewMode === "preview") {
-      return (
-        <PreviewPane
-          note={activeNote}
-          notes={notes}
-          onWikilinkClick={handleWikilinkClick}
-          onHoverLink={handleHoverLink}
-          onHoverEnd={handleHoverEnd}
-          onToggleCheckbox={handleToggleCheckbox}
-        />
-      );
-    }
-    // split
+    // preview (reading mode)
     return (
-      <>
-        <div
-          className="flex-1 flex flex-col overflow-hidden border-r"
-          style={{ borderColor: "var(--color-obsidian-border)" }}
-        >
-          <EditorPane
-            note={activeNote}
-            notes={notes}
-            onNoteChange={handleContentChange}
-            onTitleChange={handleTitleChange}
-            adjustHeight={adjustHeight}
-            textareaRef={textareaRef}
-            onLinkAutocomplete={setLinkAutocomplete}
-            onCloseAutocomplete={() => setLinkAutocomplete(null)}
-            preferences={state.preferences}
-            onAddTag={(tag) => { if (!activeNote.tags.includes(tag)) onNoteChange(activeNote.id, { tags: [...activeNote.tags, tag] }); }}
-            installedPluginIds={state.installedPluginIds}
-          />
-        </div>
-        <div className="flex-1 flex flex-col overflow-hidden">
-          <PreviewPane
-            note={activeNote}
-            notes={notes}
-            onWikilinkClick={handleWikilinkClick}
-            onHoverLink={handleHoverLink}
-            onHoverEnd={handleHoverEnd}
-            onToggleCheckbox={handleToggleCheckbox}
-          />
-        </div>
-      </>
+      <PreviewPane
+        note={activeNote}
+        notes={notes}
+        onWikilinkClick={handleWikilinkClick}
+        onHoverLink={handleHoverLink}
+        onHoverEnd={handleHoverEnd}
+        onToggleCheckbox={handleToggleCheckbox}
+      />
     );
   };
 

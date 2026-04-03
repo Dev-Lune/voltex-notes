@@ -43,7 +43,7 @@ const INITIAL_STATE: AppState = {
   activeNoteId: SAMPLE_NOTES[0].id,
   openNoteIds: [SAMPLE_NOTES[0].id, SAMPLE_NOTES[1].id, SAMPLE_NOTES[2].id],
   sidebarView: "files",
-  viewMode: "split",
+  viewMode: "live",
   mainView: "editor",
   rightPanelOpen: true,
   rightPanelTab: "backlinks",
@@ -1114,11 +1114,11 @@ export default function ObsidianApp() {
         setState((prev) => ({
           ...prev,
           viewMode:
-            prev.viewMode === "editor"
+            prev.viewMode === "live"
+              ? "editor"
+              : prev.viewMode === "editor"
               ? "preview"
-              : prev.viewMode === "preview"
-              ? "split"
-              : "editor",
+              : "live",
         }));
       }
       if (ctrl && e.key === "g") {

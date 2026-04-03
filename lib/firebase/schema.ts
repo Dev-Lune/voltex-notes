@@ -227,7 +227,7 @@ export interface FirestoreFolder {
 export interface FirestoreUserSettings {
   // ─── Editor ─────────────────────────────────────────────────────────────────
   editor: {
-    defaultViewMode: "edit" | "preview" | "split";
+    defaultViewMode: "live" | "editor" | "preview";
     fontFamily: string;
     fontSize: number; // px
     lineHeight: number;
@@ -565,7 +565,7 @@ export type Platform = FirestoreSyncState["devices"][0]["platform"];
 
 export const DEFAULT_USER_SETTINGS: Omit<FirestoreUserSettings, "updatedAt"> = {
   editor: {
-    defaultViewMode: "split",
+    defaultViewMode: "live",
     fontFamily: "Inter",
     fontSize: 16,
     lineHeight: 1.6,

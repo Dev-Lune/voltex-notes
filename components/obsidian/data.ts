@@ -253,7 +253,7 @@ export interface AppState {
   activeNoteId: string | null;
   openNoteIds: string[];
   sidebarView: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "marketplace";
-  viewMode: "editor" | "preview" | "split";
+  viewMode: "live" | "editor" | "preview";
   mainView: "editor" | "graph" | "drawing" | "canvas";
   rightPanelOpen: boolean;
   rightPanelTab: "backlinks" | "outline" | "properties" | "calendar" | "localgraph" | "heatmap" | "flashcards" | "mindmap";
@@ -520,6 +520,16 @@ export const SAMPLE_FOLDERS: Folder[] = [
   { id: "drawings", name: "Drawings", parentId: "root" },
 ];
 // ─── Sample Notes ─────────────────────────────────────────────────────────────
+
+/** IDs of built-in documentation notes — excluded from cloud sync */
+export const SAMPLE_NOTE_IDS = new Set([
+  "getting-started", "wikilinks-guide", "graph-view", "daily-notes-template",
+  "markdown-guide", "tags-system", "research-methods", "project-planning",
+  "book-notes", "system-architecture", "marketplace-index",
+  "calendar", "dataview", "templater", "excalidraw", "kanban",
+  "tasks", "tag-wrangler", "quick-switcher",
+]);
+
 export const SAMPLE_NOTES: Note[] = [
   {
     id: "getting-started",

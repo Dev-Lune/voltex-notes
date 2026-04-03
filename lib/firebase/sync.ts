@@ -17,6 +17,7 @@ import {
 } from "firebase/firestore";
 import { getFirebaseDb } from "./config";
 import type { Note } from "@/components/obsidian/data";
+import { SAMPLE_NOTE_IDS } from "@/components/obsidian/data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -145,7 +146,11 @@ export class SyncService {
         (snapshot) => {
           const notes: Note[] = [];
           snapshot.forEach((docSnap) => {
-            notes.push(firestoreToNote(docSnap.data()));
+            const note = firestoreToNote(docSnap.data());
+            // Skip built-in documentation notes from remote
+            if (!SAMPLE_NOTE_IDS.has(note.id)) {
+              notes.push(note);
+            }
           });
           this.listeners.onRemoteChange.forEach((cb) => cb(notes));
           this.state.lastSyncedAt = new Date();
@@ -173,6 +178,9 @@ export class SyncService {
   // ─── Note Operations ──────────────────────────────────────────────────────
 
   async pushNote(note: Note): Promise<void> {
+    // Never sync built-in documentation notes
+    if (SAMPLE_NOTE_IDS.has(note.id)) return;
+
     const db = getFirebaseDb();
     if (!db) {
       this.queueOfflineChange("update", note);
@@ -193,6 +201,9 @@ export class SyncService {
   }
 
   async deleteNote(noteId: string): Promise<void> {
+    // Never sync built-in documentation notes
+    if (SAMPLE_NOTE_IDS.has(noteId)) return;
+
     const db = getFirebaseDb();
     if (!db) return;
 
@@ -211,10 +222,13 @@ export class SyncService {
     const db = getFirebaseDb();
     if (!db) return;
 
+    // Filter out built-in documentation notes
+    const userNotes = notes.filter((n) => !SAMPLE_NOTE_IDS.has(n.id));
+
     this.updateStatus("syncing");
 
     try {
-      for (const note of notes) {
+      for (const note of userNotes) {
         const noteRef = doc(db, "users", this.userId, "notes", note.id);
         await setDoc(noteRef, noteToFirestore(note), { merge: true });
       }

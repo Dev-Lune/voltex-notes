@@ -14,7 +14,7 @@ interface CommandPaletteProps {
   onNewNote: () => void;
   onOpenSettings: () => void;
   onOpenGraph: () => void;
-  onViewMode?: (mode: "editor" | "split" | "preview") => void;
+  onViewMode?: (mode: "live" | "editor" | "preview") => void;
   onSidebarView?: (view: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "marketplace") => void;
 }
 
@@ -75,25 +75,25 @@ export default function CommandPalette({
       action: () => { onOpenSettings(); onClose(); },
     },
     {
+      id: "view-live",
+      type: "command",
+      icon: <Eye size={14} />,
+      label: "Switch to Live Preview",
+      action: () => { onViewMode?.("live"); onClose(); },
+    },
+    {
       id: "view-edit",
       type: "command",
       icon: <Edit3 size={14} />,
-      label: "Switch to Edit mode",
+      label: "Switch to Source mode",
       action: () => { onViewMode?.("editor"); onClose(); },
     },
     {
       id: "view-preview",
       type: "command",
-      icon: <Eye size={14} />,
-      label: "Switch to Preview mode",
-      action: () => { onViewMode?.("preview"); onClose(); },
-    },
-    {
-      id: "view-split",
-      type: "command",
       icon: <Columns2 size={14} />,
-      label: "Toggle Split view",
-      action: () => { onViewMode?.("split"); onClose(); },
+      label: "Switch to Reading mode",
+      action: () => { onViewMode?.("preview"); onClose(); },
     },
     {
       id: "starred",
