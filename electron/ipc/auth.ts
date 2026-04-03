@@ -20,6 +20,8 @@ import crypto from 'crypto'
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const SCOPES = 'openid email profile'
+const LOOPBACK_PORT = 8923
+const REDIRECT_URI = `http://127.0.0.1:${LOOPBACK_PORT}/callback`
 
 /** Exchange authorization code for tokens using Node https */
 function exchangeCode(
@@ -136,7 +138,7 @@ export function registerAuthHandlers(): void {
             return
           }
 
-          const redirectUri = `http://127.0.0.1:${(server.address() as { port: number }).port}/callback`
+          const redirectUri = REDIRECT_URI
 
           exchangeCode(code, clientId, clientSecret, redirectUri)
             .then(({ id_token }) => {
@@ -153,10 +155,9 @@ export function registerAuthHandlers(): void {
             })
         })
 
-        // Listen on random port on loopback
-        server.listen(0, '127.0.0.1', () => {
-          const port = (server.address() as { port: number }).port
-          const redirectUri = `http://127.0.0.1:${port}/callback`
+        // Listen on fixed port on loopback
+        server.listen(LOOPBACK_PORT, '127.0.0.1', () => {
+          const redirectUri = REDIRECT_URI
 
           const authUrl =
             `${GOOGLE_AUTH_URL}?` +

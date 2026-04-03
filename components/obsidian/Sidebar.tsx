@@ -438,8 +438,8 @@ function FolderGroup({
           />
         </div>
       ) : (
-        <button
-          className="w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all"
+        <div
+          className="group/folder w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all cursor-pointer"
           style={{
             color: "var(--color-obsidian-muted-text)",
             background: dragOver ? "rgba(124,106,247,0.15)" : "transparent",
@@ -453,9 +453,27 @@ function FolderGroup({
         >
           {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           <Folder size={11} />
-          <span>{folder.name}</span>
-          <span className="ml-auto opacity-60">{folderNotes.length}</span>
-        </button>
+          <span className="flex-1 truncate">{folder.name}</span>
+          <span className="opacity-60 group-hover/folder:hidden">{folderNotes.length}</span>
+          <div className="hidden group-hover/folder:flex items-center gap-0.5">
+            <button
+              className="p-0.5 rounded hover:bg-white/10 transition-colors"
+              style={{ color: "#ef4444" }}
+              onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
+              aria-label="Delete folder"
+            >
+              <Trash2 size={11} />
+            </button>
+            <button
+              className="p-0.5 rounded hover:bg-white/10 transition-colors"
+              style={{ color: "var(--color-obsidian-muted-text)" }}
+              onClick={(e) => { e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
+              aria-label="More options"
+            >
+              <MoreHorizontal size={11} />
+            </button>
+          </div>
+        </div>
       )}
 
       {/* Folder context menu */}

@@ -2,7 +2,7 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  AppState, Note, SAMPLE_NOTES, SAMPLE_FOLDERS,
+  AppState, Note, Folder, SAMPLE_NOTES, SAMPLE_FOLDERS,
   countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme
 } from "./data";
 import TitleBar from "./TitleBar";
@@ -82,7 +82,20 @@ const PLUGIN_HINTS: Record<string, string> = {
 };
 
 export default function ObsidianApp() {
-  const [state, setState] = useState<AppState>(INITIAL_STATE);
+  const [state, setState] = useState<AppState>(() => {
+    // On Electron, start with empty state — loadVault will populate it
+    const electron = typeof window !== "undefined" && "electronAPI" in window;
+    if (electron) {
+      return {
+        ...INITIAL_STATE,
+        notes: [],
+        folders: [{ id: "root", name: "Vault", parentId: null }],
+        activeNoteId: null,
+        openNoteIds: [],
+      };
+    }
+    return INITIAL_STATE;
+  });
   const historyRef = useRef<string[]>([SAMPLE_NOTES[0].id]);
   const historyIdxRef = useRef(0);
   const mainRef = useRef<HTMLDivElement>(null);
@@ -135,11 +148,39 @@ export default function ObsidianApp() {
         return markdownToNote(fp, raw);
       })
     )).filter((n): n is Note => n !== null);
+
+    // Build folders from subdirectories found in file paths
+    const folderSet = new Set<string>();
+    const vaultDirNorm = vaultDir.replace(/\\/g, "/");
+    for (const fp of filePaths) {
+      const rel = fp.replace(/\\/g, "/").replace(vaultDirNorm + "/", "");
+      const parts = rel.split("/");
+      if (parts.length > 1) {
+        folderSet.add(parts[0]); // first directory level
+      }
+    }
+    const folders: Folder[] = [
+      { id: "root", name: "Vault", parentId: null },
+      ...Array.from(folderSet).map((name) => ({ id: name, name, parentId: "root" as string | null })),
+    ];
+
+    // Assign notes to their folder based on file path
+    for (const note of notes) {
+      const rel = (note.filePath || "").replace(/\\/g, "/").replace(vaultDirNorm + "/", "");
+      const parts = rel.split("/");
+      if (parts.length > 1 && folderSet.has(parts[0])) {
+        note.folder = parts[0];
+      } else {
+        note.folder = "root";
+      }
+    }
+
     await vaultClient.setRecent(vaultDir);
     setVaultPath(vaultDir);
     if (notes.length > 0) {
       patch({
         notes,
+        folders,
         activeNoteId: notes[0].id,
         openNoteIds: [notes[0].id],
       });
@@ -158,6 +199,7 @@ export default function ObsidianApp() {
       };
       patch({
         notes: [blankNote],
+        folders: [{ id: "root", name: "Vault", parentId: null }],
         activeNoteId: blankNote.id,
         openNoteIds: [blankNote.id],
       });
