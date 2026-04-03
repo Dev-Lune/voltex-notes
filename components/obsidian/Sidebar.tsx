@@ -302,16 +302,26 @@ function FileTreeItem({
       ) : (
         <span className="flex-1 truncate text-sm">{note.title}</span>
       )}
-      {note.pinned && <Pin size={10} style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
-      {note.starred && <Star size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
-      <button
-        className="opacity-0 group-hover:opacity-100 p-1.5 rounded hover:bg-white/10 transition-opacity"
-        style={{ color: "var(--color-obsidian-muted-text)" }}
-        onClick={(e) => { e.stopPropagation(); openMenu(null); }}
-        aria-label="More options"
-      >
-        <MoreHorizontal size={12} />
-      </button>
+      {note.pinned && <Pin size={10} className="group-hover:hidden" style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
+      {note.starred && <Star size={10} className="group-hover:hidden" style={{ color: "#f9e2af", flexShrink: 0 }} />}
+      <div className="hidden group-hover:flex items-center gap-0.5">
+        <button
+          className="p-1 rounded hover:bg-white/10 transition-colors"
+          style={{ color: "#ef4444" }}
+          onClick={(e) => { e.stopPropagation(); onDelete(note.id); }}
+          aria-label="Delete note"
+        >
+          <Trash2 size={12} />
+        </button>
+        <button
+          className="p-1 rounded hover:bg-white/10 transition-colors"
+          style={{ color: "var(--color-obsidian-muted-text)" }}
+          onClick={(e) => { e.stopPropagation(); openMenu(null); }}
+          aria-label="More options"
+        >
+          <MoreHorizontal size={12} />
+        </button>
+      </div>
       {menuOpen && (
         <>
           <div className="fixed inset-0 z-[999]" onClick={(e) => { e.stopPropagation(); closeMenu(); }} />
