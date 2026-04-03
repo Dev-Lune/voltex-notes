@@ -1,13 +1,12 @@
 // electron/ipc/vault.ts
-import { ipcMain, dialog } from 'electron'
+import { ipcMain, dialog, app } from 'electron'
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 import Store from 'electron-store'
 import type { RecentVault } from '../types'
 
-const store = new Store<{ recentVaults: RecentVault[] }>({
-  defaults: { recentVaults: [] },
-})
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const store = new Store({ defaults: { recentVaults: [] } }) as any
 
 export function registerVaultHandlers(): void {
   // Show native folder picker
@@ -46,5 +45,7 @@ export function registerVaultHandlers(): void {
       lastOpened: Date.now(),
     }
     store.set('recentVaults', [entry, ...existing].slice(0, 10)) // keep 10 max
+    // Add to OS Recent Documents (#14)
+    app.addRecentDocument(vaultPath)
   })
 }

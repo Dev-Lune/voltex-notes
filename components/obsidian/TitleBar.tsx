@@ -17,6 +17,8 @@ interface TitleBarProps {
   onOpenWelcome: () => void;
   onNavigateBack: () => void;
   onNavigateForward: () => void;
+  canGoBack?: boolean;
+  canGoForward?: boolean;
 }
 
 function SyncIndicator({ status }: { status: AppState["syncStatus"] }) {
@@ -49,6 +51,8 @@ export default function TitleBar({
   onOpenWelcome,
   onNavigateBack,
   onNavigateForward,
+  canGoBack = true,
+  canGoForward = true,
 }: TitleBarProps) {
   const { sidebarCollapsed, rightPanelOpen, syncStatus, user, activeNoteId, notes } = state;
   const activeNote = notes.find((n) => n.id === activeNoteId);
@@ -85,7 +89,8 @@ export default function TitleBar({
       {/* Nav buttons */}
       <button
         onClick={onNavigateBack}
-        className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+        disabled={!canGoBack}
+        className={`p-1.5 rounded-md transition-colors ${canGoBack ? 'hover:bg-white/10' : 'opacity-40 cursor-not-allowed'}`}
         style={{ color: "var(--color-obsidian-muted-text)" }}
         title="Go back"
       >
@@ -93,7 +98,8 @@ export default function TitleBar({
       </button>
       <button
         onClick={onNavigateForward}
-        className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+        disabled={!canGoForward}
+        className={`p-1.5 rounded-md transition-colors ${canGoForward ? 'hover:bg-white/10' : 'opacity-40 cursor-not-allowed'}`}
         style={{ color: "var(--color-obsidian-muted-text)" }}
         title="Go forward"
       >
@@ -109,7 +115,7 @@ export default function TitleBar({
             color: "var(--color-obsidian-muted-text)",
           }}
         >
-          <span>{activeNote.folder}</span>
+          <span>{state.folders?.find(f => f.id === activeNote.folder)?.name ?? activeNote.folder}</span>
           <span>/</span>
           <span style={{ color: "var(--color-obsidian-text)" }}>{activeNote.title}</span>
         </div>
@@ -138,7 +144,7 @@ export default function TitleBar({
             border: "1px solid var(--color-obsidian-border)",
           }}
         >
-          ⌘P
+          {typeof navigator !== "undefined" && /mac/i.test(navigator.platform) ? "⌘P" : "Ctrl+P"}
         </kbd>
       </button>
 

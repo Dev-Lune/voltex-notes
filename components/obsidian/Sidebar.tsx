@@ -21,6 +21,8 @@ interface SidebarProps {
   onRenameNote: (id: string, newTitle: string) => void;
   onNoteOpen?: (id: string) => void;
   onCreateFolder?: (name: string) => void;
+  onDeleteFolder?: (folderId: string) => void;
+  onRenameFolder?: (folderId: string, newName: string) => void;
   onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
   isMobile?: boolean;
   onPermanentlyDelete?: (id: string) => void;
@@ -72,6 +74,7 @@ function NewNoteMenu({
     { id: "drawing", label: "Drawing", desc: "Excalidraw canvas", icon: Pencil, color: "#cba6f7", pluginId: "excalidraw" },
     { id: "daily", label: "Daily Note", desc: "Journal entry for today", icon: CalendarDays, color: "#f9e2af", pluginId: null },
     { id: "kanban", label: "Kanban Board", desc: "Task board with columns", icon: LayoutGrid, color: "#89b4fa", pluginId: "obsidian-kanban" },
+    { id: "table", label: "Table Note", desc: "Structured data table", icon: FileCode2, color: "#a6e3a1", pluginId: null },
   ];
 
   const filtered = types.filter(({ pluginId }) => !pluginId || installedPluginIds.includes(pluginId));
@@ -187,6 +190,13 @@ function FileTreeItem({
     e.dataTransfer.setData("text/note-id", note.id);
     e.dataTransfer.setData("text/plain", note.id);
     e.dataTransfer.effectAllowed = "move";
+    // Custom drag ghost showing note title
+    const ghost = document.createElement("div");
+    ghost.textContent = note.title;
+    ghost.style.cssText = "position:absolute;top:-9999px;left:-9999px;padding:4px 10px;border-radius:6px;font-size:12px;font-weight:500;color:#fff;background:#333;white-space:nowrap;";
+    document.body.appendChild(ghost);
+    e.dataTransfer.setDragImage(ghost, 0, 0);
+    requestAnimationFrame(() => document.body.removeChild(ghost));
   };
 
   const openMenu = (pos: { x: number; y: number } | null) => {
@@ -290,7 +300,7 @@ function FileTreeItem({
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="flex-1 truncate text-xs">{note.title}</span>
+        <span className="flex-1 truncate text-sm">{note.title}</span>
       )}
       {note.pinned && <Pin size={10} style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
       {note.starred && <Star size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
@@ -339,6 +349,8 @@ function FolderGroup({
   onMoveNoteToFolder,
   onStarToggle,
   onPinToggle,
+  onDeleteFolder,
+  onRenameFolder,
   selectionMode,
   selectedIds,
   onToggleSelect,
@@ -352,12 +364,18 @@ function FolderGroup({
   onMoveNoteToFolder?: (noteId: string, folderId: string) => void;
   onStarToggle?: (id: string, starred: boolean) => void;
   onPinToggle?: (id: string) => void;
+  onDeleteFolder?: (folderId: string) => void;
+  onRenameFolder?: (folderId: string, newName: string) => void;
   selectionMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
 }) {
   const [open, setOpen] = useState(true);
   const [dragOver, setDragOver] = useState(false);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState(folder.name);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const folderNotes = notes.filter((n) => n.folder === folder.id);
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -391,20 +409,125 @@ function FolderGroup({
         transition: "border 0.15s, background 0.15s",
       }}
     >
-      <button
-        className="w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all"
-        style={{
-          color: "var(--color-obsidian-muted-text)",
-          background: dragOver ? "rgba(124,106,247,0.15)" : "transparent",
-          borderRadius: 4,
-        }}
-        onClick={() => setOpen((v) => !v)}
-      >
-        {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-        <Folder size={11} />
-        <span>{folder.name}</span>
-        <span className="ml-auto opacity-60">{folderNotes.length}</span>
-      </button>
+      {renaming ? (
+        <div className="flex items-center gap-1.5 px-3 py-1">
+          <Folder size={11} style={{ color: "var(--color-obsidian-muted-text)" }} />
+          <input
+            autoFocus
+            value={renameValue}
+            onChange={(e) => setRenameValue(e.target.value)}
+            onBlur={() => {
+              if (renameValue.trim() && renameValue.trim() !== folder.name) {
+                onRenameFolder?.(folder.id, renameValue.trim());
+              }
+              setRenaming(false);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                if (renameValue.trim() && renameValue.trim() !== folder.name) {
+                  onRenameFolder?.(folder.id, renameValue.trim());
+                }
+                setRenaming(false);
+              } else if (e.key === "Escape") {
+                setRenameValue(folder.name);
+                setRenaming(false);
+              }
+            }}
+            className="flex-1 bg-transparent outline-none text-xs font-medium uppercase tracking-wider"
+            style={{ color: "var(--color-obsidian-text)", borderBottom: "1px solid var(--color-obsidian-accent)" }}
+          />
+        </div>
+      ) : (
+        <button
+          className="w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all"
+          style={{
+            color: "var(--color-obsidian-muted-text)",
+            background: dragOver ? "rgba(124,106,247,0.15)" : "transparent",
+            borderRadius: 4,
+          }}
+          onClick={() => setOpen((v) => !v)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setContextMenu({ x: e.clientX, y: e.clientY });
+          }}
+        >
+          {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
+          <Folder size={11} />
+          <span>{folder.name}</span>
+          <span className="ml-auto opacity-60">{folderNotes.length}</span>
+        </button>
+      )}
+
+      {/* Folder context menu */}
+      {contextMenu && (
+        <>
+          <div className="fixed inset-0 z-50" onClick={() => setContextMenu(null)} />
+          <div
+            className="fixed z-50 rounded-lg shadow-lg border py-1 min-w-[140px]"
+            style={{
+              left: contextMenu.x,
+              top: contextMenu.y,
+              background: "var(--color-obsidian-surface)",
+              borderColor: "var(--color-obsidian-border)",
+            }}
+          >
+            <button
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:opacity-80 transition-colors"
+              style={{ color: "var(--color-obsidian-text)" }}
+              onClick={() => {
+                setRenameValue(folder.name);
+                setRenaming(true);
+                setContextMenu(null);
+              }}
+            >
+              <Pencil size={12} /> Rename
+            </button>
+            <button
+              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:opacity-80 transition-colors"
+              style={{ color: "#ef4444" }}
+              onClick={() => {
+                setConfirmDelete(true);
+                setContextMenu(null);
+              }}
+            >
+              <Trash2 size={12} /> Delete
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Delete confirmation */}
+      {confirmDelete && (
+        <>
+          <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ background: "rgba(0,0,0,0.5)" }} onClick={() => setConfirmDelete(false)}>
+            <div
+              className="rounded-lg shadow-xl p-4 max-w-xs w-full mx-4"
+              style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="text-sm font-medium mb-1" style={{ color: "var(--color-obsidian-text)" }}>Delete &ldquo;{folder.name}&rdquo;?</p>
+              <p className="text-xs mb-3" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                {folderNotes.length > 0 ? `${folderNotes.length} note${folderNotes.length > 1 ? "s" : ""} will be moved to the root folder.` : "This folder is empty."}
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  className="px-3 py-1 rounded text-xs"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                  onClick={() => setConfirmDelete(false)}
+                >Cancel</button>
+                <button
+                  className="px-3 py-1 rounded text-xs font-medium"
+                  style={{ background: "#ef4444", color: "#fff" }}
+                  onClick={() => {
+                    onDeleteFolder?.(folder.id);
+                    setConfirmDelete(false);
+                  }}
+                >Delete</button>
+              </div>
+            </div>
+          </div>
+        </>
+      )}
       {open &&
         folderNotes.map((note) => (
           <FileTreeItem
@@ -435,6 +558,8 @@ export default function Sidebar({
   onRenameNote,
   onNoteOpen,
   onCreateFolder,
+  onDeleteFolder,
+  onRenameFolder,
   onMoveNoteToFolder,
   isMobile = false,
   onPermanentlyDelete,
@@ -452,7 +577,12 @@ export default function Sidebar({
   const [selectionMode, setSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [explorerMenu, setExplorerMenu] = useState<{ x: number; y: number } | null>(null);
-  const [sortMode, setSortMode] = useState<SortMode>("modified");
+  const [sortMode, setSortMode] = useState<SortMode>(() => {
+    try {
+      const saved = typeof window !== "undefined" ? localStorage.getItem("voltex-sort-mode") : null;
+      return (saved as SortMode) || "modified";
+    } catch { return "modified"; }
+  });
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [rootDragOver, setRootDragOver] = useState(false);
   const allTags = getAllTags(notes);
@@ -541,6 +671,9 @@ export default function Sidebar({
   };
 
   const handleBulkDelete = () => {
+    const count = selectedIds.size;
+    if (count === 0) return;
+    if (!confirm(`Move ${count} note${count > 1 ? "s" : ""} to Trash?`)) return;
     selectedIds.forEach((id) => onDeleteNote(id));
     setSelectedIds(new Set());
     setSelectionMode(false);
@@ -742,7 +875,7 @@ export default function Sidebar({
                           key={key}
                           className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
                           style={{ color: sortMode === key ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)" }}
-                          onClick={() => { setSortMode(key); setSortMenuOpen(false); }}
+                          onClick={() => { setSortMode(key); setSortMenuOpen(false); try { localStorage.setItem("voltex-sort-mode", key); } catch { /* ignore */ } }}
                         >
                           <Icon size={11} /> {label}
                         </button>
@@ -822,13 +955,14 @@ export default function Sidebar({
                 style={{ color: "var(--color-obsidian-muted-text)" }}
                 aria-label="Exit selection mode"
               >
+                <X size={12} />
               </button>
             </div>
           </div>
         )}
 
-        {/* Sync badge */}
-        <SyncBadge status={syncStatus} />
+        {/* Sync badge — only show when user is signed in or actively syncing */}
+        {(user || syncStatus !== "offline") && <SyncBadge status={syncStatus} />}
 
         {/* Panel content */}
         <div className="flex-1 overflow-y-auto py-1">
@@ -864,13 +998,15 @@ export default function Sidebar({
                     >
                       <FileText size={11} /> New Note
                     </button>
-                    <button
-                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                      style={{ color: "var(--color-obsidian-text)" }}
-                      onClick={() => { onNewNote("drawing"); setExplorerMenu(null); }}
-                    >
-                      <Pencil size={11} /> New Drawing
-                    </button>
+                    {state.installedPluginIds?.includes("excalidraw") && (
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => { onNewNote("drawing"); setExplorerMenu(null); }}
+                      >
+                        <Pencil size={11} /> New Drawing
+                      </button>
+                    )}
                     <button
                       className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
                       style={{ color: "var(--color-obsidian-text)" }}
@@ -878,13 +1014,15 @@ export default function Sidebar({
                     >
                       <CalendarDays size={11} /> New Daily Note
                     </button>
-                    <button
-                      className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
-                      style={{ color: "var(--color-obsidian-text)" }}
-                      onClick={() => { onNewNote("kanban"); setExplorerMenu(null); }}
-                    >
-                      <LayoutGrid size={11} /> New Kanban Board
-                    </button>
+                    {state.installedPluginIds?.includes("obsidian-kanban") && (
+                      <button
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)" }}
+                        onClick={() => { onNewNote("kanban"); setExplorerMenu(null); }}
+                      >
+                        <LayoutGrid size={11} /> New Kanban Board
+                      </button>
+                    )}
                     <div style={{ borderTop: "1px solid var(--color-obsidian-border)", margin: "2px 0" }} />
                     <button
                       className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
@@ -942,6 +1080,8 @@ export default function Sidebar({
                   onMoveNoteToFolder={onMoveNoteToFolder}
                   onStarToggle={handleStarToggle}
                   onPinToggle={onTogglePin}
+                  onDeleteFolder={onDeleteFolder}
+                  onRenameFolder={onRenameFolder}
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}

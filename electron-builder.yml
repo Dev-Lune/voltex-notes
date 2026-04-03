@@ -32,6 +32,10 @@ win:
     - target: nsis
       arch: [x64]
   icon: public/icon-512x512.png
+  fileAssociations:
+    - ext: md
+      name: Markdown Note
+      description: Open with Voltex Notes
 
 nsis:
   oneClick: false
@@ -48,6 +52,22 @@ linux:
       arch: [x64]
   icon: public/icon-512x512.png
   category: Office
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  icon: public/icon-512x512.png
+  category: public.app-category.productivity
+  fileAssociations:
+    - ext: md
+      name: Markdown Note
+      role: Editor
+
+protocols:
+  - name: Voltex Notes
+    schemes:
+      - voltex
 
 publish:
   provider: github

@@ -6,11 +6,13 @@ import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signInWithPopup,
+  signInWithCredential,
   GoogleAuthProvider,
   updateProfile,
   type UserCredential,
 } from "firebase/auth";
 import { getFirebaseAuth } from "@/lib/firebase/config";
+import { isElectron, authClient } from "@/lib/vault/client";
 
 interface AuthModalProps {
   onClose: () => void;
@@ -96,9 +98,31 @@ export default function AuthModal({ onClose, onAuth }: AuthModalProps) {
 
     setLoading(true);
     try {
-      const provider = new GoogleAuthProvider();
-      const cred = await signInWithPopup(auth, provider);
-      completeAuth(cred);
+      if (isElectron()) {
+        // Electron: open system default browser for Google OAuth
+        const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+        const clientSecret = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_SECRET;
+        if (!clientId || !clientSecret) {
+          setError("Google OAuth credentials not configured (NEXT_PUBLIC_GOOGLE_CLIENT_ID / NEXT_PUBLIC_GOOGLE_CLIENT_SECRET).");
+          setLoading(false);
+          return;
+        }
+        const result = await authClient.googleSignIn(clientId, clientSecret);
+        if ("error" in result) {
+          setError(result.error);
+          setLoading(false);
+          return;
+        }
+        // Exchange the ID token for a Firebase credential
+        const credential = GoogleAuthProvider.credential(result.idToken);
+        const cred = await signInWithCredential(auth, credential);
+        completeAuth(cred);
+      } else {
+        // Web: use standard Firebase popup
+        const provider = new GoogleAuthProvider();
+        const cred = await signInWithPopup(auth, provider);
+        completeAuth(cred);
+      }
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || "";
       setError(firebaseErrorMessage(code));

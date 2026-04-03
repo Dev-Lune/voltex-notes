@@ -1,17 +1,18 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import JSZip from "jszip";
 import {
   X, Settings, Puzzle, Cloud, Palette, Keyboard, User,
   Shield, Download, Upload, Trash2, RefreshCw, CheckCircle, ChevronRight,
-  ExternalLink, Star, Check, Monitor, Sun, Feather, Pipette, RotateCcw, ChevronDown, ChevronUp
+  ExternalLink, Star, Check, Monitor, Sun, Feather, Pipette, RotateCcw, ChevronDown, ChevronUp, FolderOpen, FolderPlus
 } from "lucide-react";
 import {
   AppState, THEMES, ObsidianTheme, applyTheme, formatDownloads,
   CustomThemeColors, DEFAULT_CUSTOM_COLORS, COLOR_PALETTES, applyCustomColors, getColorsFromTheme,
   EditorPreferences, NoteType, MARKETPLACE_ITEMS, MarketplaceItem
 } from "./data";
+import { isElectron, appClient } from "@/lib/vault/client";
 
 interface SettingsModalProps {
   state: AppState;
@@ -24,6 +25,8 @@ interface SettingsModalProps {
   onPreferencesChange: (prefs: Partial<EditorPreferences>) => void;
   onOpenMarketplace: () => void;
   onImportNotes?: (files: { title: string; content: string }[]) => void;
+  onSwitchVault?: () => void;
+  onCreateVault?: () => void;
 }
 
 type Tab =
@@ -973,11 +976,21 @@ function GeneralTab({
   preferences,
   folders,
   onPreferencesChange,
+  onSwitchVault,
+  onCreateVault,
 }: {
   preferences: EditorPreferences;
   folders: { id: string; name: string }[];
   onPreferencesChange: (prefs: Partial<EditorPreferences>) => void;
+  onSwitchVault?: () => void;
+  onCreateVault?: () => void;
 }) {
+  const [appVersion, setAppVersion] = useState("1.0.0");
+  useEffect(() => {
+    if (isElectron()) {
+      appClient.getVersion().then((v) => setAppVersion(v)).catch(() => {});
+    }
+  }, []);
   return (
     <div className="flex flex-col gap-1">
       <SettingRow
@@ -1096,6 +1109,44 @@ function GeneralTab({
       {/* About section */}
       <div className="my-2" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
 
+      {onSwitchVault && (
+        <SettingRow
+          label="Vault"
+          description="Open a different vault folder"
+          action={
+            <div className="flex gap-2">
+              <button
+                onClick={onSwitchVault}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:opacity-80"
+                style={{
+                  background: "var(--color-obsidian-bg)",
+                  border: "1px solid var(--color-obsidian-border)",
+                  color: "var(--color-obsidian-text)",
+                }}
+              >
+                <FolderOpen size={13} />
+                Switch Vault
+              </button>
+              {onCreateVault && (
+                <button
+                  onClick={onCreateVault}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors hover:opacity-80"
+                  style={{
+                    background: "var(--color-obsidian-accent)",
+                    color: "#fff",
+                  }}
+                >
+                  <FolderPlus size={13} />
+                  Create Vault
+                </button>
+              )}
+            </div>
+          }
+        />
+      )}
+
+      <div className="my-2" style={{ borderTop: "1px solid var(--color-obsidian-border)" }} />
+
       <div className="py-4 flex flex-col gap-3">
         <div className="flex items-center gap-3">
           <svg viewBox="0 0 82 116" width="20" height="28" fill="none">
@@ -1109,7 +1160,7 @@ function GeneralTab({
               Voltex Notes
             </p>
             <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
-              v1.0.0 &middot; MIT License &middot; Open Source
+              v{appVersion} &middot; MIT License &middot; Open Source
             </p>
           </div>
         </div>
@@ -1431,6 +1482,8 @@ export default function SettingsModal({
   onPreferencesChange,
   onOpenMarketplace,
   onImportNotes,
+  onSwitchVault,
+  onCreateVault,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
 
@@ -1516,6 +1569,8 @@ export default function SettingsModal({
                 preferences={state.preferences}
                 folders={state.folders}
                 onPreferencesChange={onPreferencesChange}
+                onSwitchVault={onSwitchVault}
+                onCreateVault={onCreateVault}
               />
             )}
 

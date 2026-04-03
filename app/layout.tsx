@@ -200,7 +200,7 @@ export default function RootLayout({
       </head>
       <body className="font-sans antialiased">
         {children}
-        <Analytics />
+        {process.env.NEXT_PUBLIC_VERCEL_ENV && <Analytics />}
         <Script
           src="https://www.googletagmanager.com/gtag/js?id=G-0JTRDFGX5J"
           strategy="afterInteractive"

@@ -1394,7 +1394,7 @@ export default function RightPanel({
     >
       {/* Tabs */}
       <div
-        className="flex items-center shrink-0 overflow-x-auto"
+        className="flex items-center shrink-0 overflow-x-auto scrollbar-thin"
         style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
       >
         {tabs.map(({ id, icon: Icon, label }) => (

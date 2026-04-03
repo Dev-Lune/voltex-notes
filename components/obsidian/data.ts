@@ -518,8 +518,6 @@ export const SAMPLE_FOLDERS: Folder[] = [
   { id: "research", name: "Research", parentId: "root" },
   { id: "daily", name: "Daily Notes", parentId: "root" },
   { id: "drawings", name: "Drawings", parentId: "root" },
-  { id: "templates", name: "Templates", parentId: "root" },
-  { id: "marketplace", name: "Marketplace Data", parentId: "root" },
 ];
 // ─── Sample Notes ─────────────────────────────────────────────────────────────
 export const SAMPLE_NOTES: Note[] = [
@@ -810,7 +808,7 @@ For each book: summary, key ideas (linked), quotes, synthesis, action items. See
   {
     id: "marketplace-index",
     title: "Marketplace Index",
-    folder: "marketplace",
+    folder: "root",
     type: "markdown",
     tags: ["marketplace", "plugins", "meta"],
     createdAt: "2024-03-05",

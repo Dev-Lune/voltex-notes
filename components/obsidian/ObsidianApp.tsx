@@ -3,7 +3,7 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   AppState, Note, SAMPLE_NOTES, SAMPLE_FOLDERS,
-  countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences
+  countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme
 } from "./data";
 import TitleBar from "./TitleBar";
 import Sidebar from "./Sidebar";
@@ -27,7 +27,7 @@ import {
   useViewportWidth,
 } from "./MobileNav";
 import { SyncService } from "@/lib/firebase/sync";
-import { isElectron, vaultClient, fsClient } from "@/lib/vault/client";
+import { isElectron, vaultClient, fsClient, windowClient, electronOn, updaterClient } from "@/lib/vault/client";
 import { noteToMarkdown, markdownToNote, noteFilePath } from "@/lib/vault/serializer";
 import {
   X, Sparkles, FileEdit, Link2, Palette, Package,
@@ -104,11 +104,17 @@ export default function ObsidianApp() {
   const [appReady, setAppReady] = useState(false);
   const [userInfoOpen, setUserInfoOpen] = useState(false);
   const [pluginToast, setPluginToast] = useState<{ message: string; visible: boolean } | null>(null);
+  const [vaultNameInput, setVaultNameInput] = useState<{ parentPath: string } | null>(null);
+
+  // ── Auto-updater state ─────────────────────────────────────────────────────
+  const [updateReady, setUpdateReady] = useState<string | null>(null);
 
   // ── Vault (Electron desktop only) ──────────────────────────────────────────
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [recentVaults, setRecentVaults] = useState<Array<{ path: string; name: string; lastOpened: number }>>([]);
-  const vaultSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const vaultSaveTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const fileWatcherCleanupRef = useRef<(() => void) | null>(null);
+  const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(new Set());
 
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
@@ -116,13 +122,19 @@ export default function ObsidianApp() {
 
   // ── Vault helpers (Electron) ────────────────────────────────────────────────
   const loadVault = useCallback(async (vaultDir: string) => {
+    // Clean up previous file watcher
+    if (fileWatcherCleanupRef.current) {
+      fileWatcherCleanupRef.current();
+      fileWatcherCleanupRef.current = null;
+    }
     const filePaths = await fsClient.listFiles(vaultDir);
-    const notes: Note[] = await Promise.all(
+    const notes: Note[] = (await Promise.all(
       filePaths.map(async (fp: string) => {
         const raw = await fsClient.readFile(fp);
+        if (raw === null) return null;
         return markdownToNote(fp, raw);
       })
-    );
+    )).filter((n): n is Note => n !== null);
     await vaultClient.setRecent(vaultDir);
     setVaultPath(vaultDir);
     if (notes.length > 0) {
@@ -152,8 +164,12 @@ export default function ObsidianApp() {
     }
     setAppReady(true);
     // Start watching for external changes
-    fsClient.onFileChanged(async (changedPath: string) => {
+    // First, tell the main process to start chokidar on this vault
+    await fsClient.watch(vaultDir);
+    // Then listen for change events from the watcher
+    fileWatcherCleanupRef.current = fsClient.onFileChanged(async (changedPath: string) => {
       const raw = await fsClient.readFile(changedPath);
+      if (raw === null) return; // file was deleted externally
       const updated = markdownToNote(changedPath, raw);
       setState((prev) => ({
         ...prev,
@@ -169,7 +185,12 @@ export default function ObsidianApp() {
       vaultClient.listRecent().then(async (recents) => {
         setRecentVaults(recents);
         if (recents.length > 0) {
-          await loadVault(recents[0].path);
+          try {
+            await loadVault(recents[0].path);
+          } catch {
+            setAppReady(true);
+            setWelcomeModalOpen(true);
+          }
           return;
         }
         // No recent vault — show welcome
@@ -236,13 +257,20 @@ export default function ObsidianApp() {
   // Apply theme + persist
   useEffect(() => {
     const theme = THEMES.find((t) => t.id === state.activeThemeId) ?? THEMES[0];
-    const root = document.documentElement;
-    Object.entries(theme.vars).forEach(([key, value]) => {
-      root.style.setProperty(key, value);
-    });
+    applyTheme(theme);
     // Save to localStorage
     try { localStorage.setItem("voltex-theme", state.activeThemeId); } catch { /* ignore */ }
   }, [state.activeThemeId]);
+
+  // Update document/window title when active note changes
+  useEffect(() => {
+    const activeNote = state.notes.find((n) => n.id === state.activeNoteId);
+    const title = activeNote ? `${activeNote.title} — Voltex Notes` : "Voltex Notes";
+    document.title = title;
+    if (isElectron()) {
+      windowClient.setTitle(title);
+    }
+  }, [state.activeNoteId, state.notes]);
 
   // Load saved theme from localStorage on mount
   useEffect(() => {
@@ -432,11 +460,15 @@ export default function ObsidianApp() {
     if (historyIdxRef.current > 0) {
       historyIdxRef.current--;
       const id = historyRef.current[historyIdxRef.current];
-      setState((prev) => ({
-        ...prev,
-        activeNoteId: id,
-        mainView: "editor",
-      }));
+      setState((prev) => {
+        const alreadyOpen = prev.openNoteIds.includes(id);
+        return {
+          ...prev,
+          activeNoteId: id,
+          openNoteIds: alreadyOpen ? prev.openNoteIds : [...prev.openNoteIds, id],
+          mainView: "editor",
+        };
+      });
     }
   }, []);
 
@@ -444,11 +476,15 @@ export default function ObsidianApp() {
     if (historyIdxRef.current < historyRef.current.length - 1) {
       historyIdxRef.current++;
       const id = historyRef.current[historyIdxRef.current];
-      setState((prev) => ({
-        ...prev,
-        activeNoteId: id,
-        mainView: "editor",
-      }));
+      setState((prev) => {
+        const alreadyOpen = prev.openNoteIds.includes(id);
+        return {
+          ...prev,
+          activeNoteId: id,
+          openNoteIds: alreadyOpen ? prev.openNoteIds : [...prev.openNoteIds, id],
+          mainView: "editor",
+        };
+      });
     }
   }, []);
 
@@ -486,27 +522,28 @@ export default function ObsidianApp() {
       type,
     };
 
+    let finalNote: Note = newNote;
     setState((prev) => {
       const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : (prev.preferences.defaultNoteLocation || "root");
-      newNote.folder = folder;
+      finalNote = { ...newNote, folder };
       return {
         ...prev,
-        notes: [...prev.notes, newNote],
+        notes: [...prev.notes, finalNote],
         activeNoteId: id,
         openNoteIds: [...prev.openNoteIds, id],
         mainView: "editor",
       };
     });
-    pushNoteToFirestore(newNote);
+    pushNoteToFirestore(finalNote);
 
     // Save to disk in Electron
     if (isElectron() && vaultPath) {
-      const fp = noteFilePath(vaultPath, newNote);
-      fsClient.writeFile(fp, noteToMarkdown({ ...newNote, filePath: fp })).then(() => {
+      const fp = noteFilePath(vaultPath, finalNote);
+      fsClient.writeFile(fp, noteToMarkdown({ ...finalNote, filePath: fp })).then(() => {
         setState((prev) => ({
           ...prev,
           notes: prev.notes.map((n) =>
-            n.id === newNote.id ? { ...n, filePath: fp } : n
+            n.id === finalNote.id ? { ...n, filePath: fp } : n
           ),
         }));
       });
@@ -526,7 +563,45 @@ export default function ObsidianApp() {
       ...prev,
       folders: [...prev.folders, { id, name, parentId: "root" }],
     }));
-  }, []);
+    // Create directory on disk in Electron
+    if (isElectron() && vaultPath) {
+      fsClient.mkdir(`${vaultPath}/${name}`).catch(() => { /* ignore */ });
+    }
+  }, [vaultPath]);
+
+  // Delete folder — moves notes to root, removes folder from state
+  const deleteFolder = useCallback((folderId: string) => {
+    if (folderId === "root") return;
+    setState((prev) => {
+      const folder = prev.folders.find((f) => f.id === folderId);
+      // Remove directory on disk in Electron
+      if (isElectron() && vaultPath && folder) {
+        fsClient.rmdir(`${vaultPath}/${folder.name}`).catch(() => { /* ignore */ });
+      }
+      return {
+        ...prev,
+        notes: prev.notes.map((n) => n.folder === folderId ? { ...n, folder: "root" } : n),
+        folders: prev.folders.filter((f) => f.id !== folderId),
+      };
+    });
+  }, [vaultPath]);
+
+  // Rename folder
+  const renameFolder = useCallback((folderId: string, newName: string) => {
+    if (folderId === "root" || !newName.trim()) return;
+    setState((prev) => {
+      const folder = prev.folders.find((f) => f.id === folderId);
+      const oldName = folder?.name;
+      // Rename directory on disk in Electron
+      if (isElectron() && vaultPath && oldName && oldName !== newName.trim()) {
+        fsClient.renameDir(`${vaultPath}/${oldName}`, `${vaultPath}/${newName.trim()}`).catch(() => { /* ignore */ });
+      }
+      return {
+        ...prev,
+        folders: prev.folders.map((f) => f.id === folderId ? { ...f, name: newName.trim() } : f),
+      };
+    });
+  }, [vaultPath]);
 
   // Import markdown files
   const importNotes = useCallback((files: { title: string; content: string }[]) => {
@@ -548,7 +623,14 @@ export default function ObsidianApp() {
       notes: [...prev.notes, ...newNotes],
     }));
     newNotes.forEach((n) => pushNoteToFirestore(n));
-  }, [pushNoteToFirestore]);
+    // Write imported notes to disk in Electron
+    if (isElectron() && vaultPath) {
+      newNotes.forEach((n) => {
+        const fp = noteFilePath(vaultPath, n);
+        fsClient.writeFile(fp, noteToMarkdown({ ...n, filePath: fp }));
+      });
+    }
+  }, [pushNoteToFirestore, vaultPath]);
 
   // Move note to folder
   const moveNoteToFolder = useCallback((noteId: string, folderId: string) => {
@@ -562,8 +644,23 @@ export default function ObsidianApp() {
         return updated;
       }),
     }));
-    if (movedNote) pushNoteToFirestore(movedNote);
-  }, [pushNoteToFirestore]);
+    if (movedNote) {
+      const note: Note = movedNote;
+      pushNoteToFirestore(note);
+      // Move file on disk in Electron
+      if (isElectron() && vaultPath && note.filePath) {
+        const newPath = noteFilePath(vaultPath, note);
+        fsClient.renameFile(note.filePath, newPath).then(() => {
+          setState((prev) => ({
+            ...prev,
+            notes: prev.notes.map((n) =>
+              n.id === note.id ? { ...n, filePath: newPath } : n
+            ),
+          }));
+        });
+      }
+    }
+  }, [pushNoteToFirestore, vaultPath]);
   // Update note
   const updateNote = useCallback(
     (id: string, noteP: Partial<Note>) => {
@@ -602,11 +699,15 @@ export default function ObsidianApp() {
       }));
       if (updatedNote) {
         pushNoteToFirestore(updatedNote);
-        // Debounced save to disk in Electron
+        // Debounced save to disk in Electron (per-note timer)
         if (isElectron() && vaultPath) {
           const noteToSave: Note = updatedNote;
-          if (vaultSaveTimerRef.current) clearTimeout(vaultSaveTimerRef.current);
-          vaultSaveTimerRef.current = setTimeout(async () => {
+          const existing = vaultSaveTimerRef.current.get(noteToSave.id);
+          if (existing) clearTimeout(existing);
+          setDirtyNoteIds((prev) => new Set(prev).add(noteToSave.id));
+          vaultSaveTimerRef.current.set(noteToSave.id, setTimeout(async () => {
+            vaultSaveTimerRef.current.delete(noteToSave.id);
+            setDirtyNoteIds((prev) => { const next = new Set(prev); next.delete(noteToSave.id); return next; });
             const fp = noteToSave.filePath || noteFilePath(vaultPath, noteToSave);
             await fsClient.writeFile(fp, noteToMarkdown({ ...noteToSave, filePath: fp }));
             if (!noteToSave.filePath) {
@@ -617,7 +718,7 @@ export default function ObsidianApp() {
                 ),
               }));
             }
-          }, 300);
+          }, 300));
         }
       }
     },
@@ -661,6 +762,7 @@ export default function ObsidianApp() {
 
   // Delete note (soft delete → moves to trash)
   const deleteNote = useCallback((id: string) => {
+    let trashedNote: Note | null = null;
     setState((prev) => {
       const openRemaining = prev.openNoteIds.filter((oid) => oid !== id);
       const newActive =
@@ -669,23 +771,23 @@ export default function ObsidianApp() {
           : prev.activeNoteId;
       return {
         ...prev,
-        notes: prev.notes.map((n) =>
-          n.id === id ? { ...n, trashed: true, trashedAt: new Date().toISOString() } : n
-        ),
+        notes: prev.notes.map((n) => {
+          if (n.id !== id) return n;
+          const updated = { ...n, trashed: true, trashedAt: new Date().toISOString() };
+          trashedNote = updated;
+          return updated;
+        }),
         openNoteIds: openRemaining,
         activeNoteId: newActive,
       };
     });
-    // Sync the soft-deleted note to Firestore
-    setState((prev) => {
-      const trashedNote = prev.notes.find((n) => n.id === id);
-      if (trashedNote) pushNoteToFirestore(trashedNote);
-      // Move file to .trash in Electron
-      if (isElectron() && trashedNote?.filePath) {
-        fsClient.deleteFile(trashedNote.filePath);
+    // Sync the soft-deleted note to Firestore & delete from disk (outside setState)
+    if (trashedNote) {
+      pushNoteToFirestore(trashedNote);
+      if (isElectron() && (trashedNote as Note).filePath) {
+        fsClient.deleteFile((trashedNote as Note).filePath!);
       }
-      return prev;
-    });
+    }
   }, [pushNoteToFirestore]);
 
   // Permanently delete note
@@ -749,8 +851,23 @@ export default function ObsidianApp() {
         return updated;
       }),
     }));
-    if (renamedNote) pushNoteToFirestore(renamedNote);
-  }, [pushNoteToFirestore]);
+    if (renamedNote) {
+      const note: Note = renamedNote;
+      pushNoteToFirestore(note);
+      // Rename file on disk in Electron
+      if (isElectron() && vaultPath && note.filePath) {
+        const newPath = noteFilePath(vaultPath, note);
+        fsClient.renameFile(note.filePath, newPath).then(() => {
+          setState((prev) => ({
+            ...prev,
+            notes: prev.notes.map((n) =>
+              n.id === note.id ? { ...n, filePath: newPath } : n
+            ),
+          }));
+        });
+      }
+    }
+  }, [pushNoteToFirestore, vaultPath]);
 
 
 
@@ -830,7 +947,7 @@ export default function ObsidianApp() {
       setTimeout(() => setPluginToast((t) => t ? { ...t, visible: false } : null), 4000);
       setTimeout(() => setPluginToast(null), 4500);
     }
-  }, []);
+  }, [isMobile]);
 
   const handleMarketplaceUninstall = useCallback((id: string) => {
     setState((prev) => ({
@@ -904,6 +1021,36 @@ export default function ObsidianApp() {
     },
   });
 
+  // ── Electron IPC event listeners (tray, menu, updater) ────────────────────
+  useEffect(() => {
+    if (!isElectron()) return;
+    const cleanups: (() => void)[] = [];
+
+    // Tray "New Note" (#3)
+    cleanups.push(electronOn('tray:new-note', () => { createNote(); }));
+
+    // Menu events (#12)
+    cleanups.push(electronOn('menu:open-settings', () => { patch({ settingsOpen: true }); }));
+    cleanups.push(electronOn('menu:open-vault', async () => {
+      const chosen = await vaultClient.open();
+      if (chosen) await loadVault(chosen);
+    }));
+    cleanups.push(electronOn('menu:toggle-sidebar', () => {
+      patch({ sidebarCollapsed: !state.sidebarCollapsed });
+    }));
+    cleanups.push(electronOn('menu:toggle-right-panel', () => {
+      patch({ rightPanelOpen: !state.rightPanelOpen });
+    }));
+
+    // Auto-updater UI (#11)
+    cleanups.push(updaterClient.onUpdateReady((version) => {
+      setUpdateReady(version);
+    }));
+
+    return () => { cleanups.forEach((fn) => fn()); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -962,7 +1109,12 @@ export default function ObsidianApp() {
       }
       if (ctrl && e.key === "d") {
         e.preventDefault();
-        if (state.activeNoteId) deleteNote(state.activeNoteId);
+        if (state.activeNoteId) {
+          const noteTitle = state.notes.find((n) => n.id === state.activeNoteId)?.title ?? "this note";
+          if (confirm(`Move "${noteTitle}" to trash?`)) {
+            deleteNote(state.activeNoteId);
+          }
+        }
       }
       if (ctrl && e.key === "l") {
         e.preventDefault();
@@ -998,6 +1150,28 @@ export default function ObsidianApp() {
       className="obsidian-app-root flex flex-col h-screen overflow-hidden"
       style={{ background: "var(--color-obsidian-bg)" }}
     >
+      {/* Auto-updater banner */}
+      {updateReady && (
+        <div
+          className="flex items-center justify-center gap-3 py-1.5 px-4 text-xs font-medium shrink-0"
+          style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+        >
+          <span>Voltex Notes v{updateReady} is ready</span>
+          <button
+            className="px-2 py-0.5 rounded text-xs font-semibold hover:opacity-80 transition-opacity"
+            style={{ background: "rgba(255,255,255,0.2)" }}
+            onClick={() => updaterClient.installUpdate()}
+          >
+            Restart to install
+          </button>
+          <button
+            className="opacity-60 hover:opacity-100"
+            onClick={() => setUpdateReady(null)}
+          >
+            <X size={12} />
+          </button>
+        </div>
+      )}
       {/* Desktop Title bar */}
       <div className="hide-mobile">
         <TitleBar
@@ -1010,12 +1184,14 @@ export default function ObsidianApp() {
           onOpenWelcome={() => setWelcomeModalOpen(true)}
           onNavigateBack={navigateBack}
           onNavigateForward={navigateForward}
+          canGoBack={historyIdxRef.current > 0}
+          canGoForward={historyIdxRef.current < historyRef.current.length - 1}
         />
       </div>
 
       {/* Mobile Header */}
       <MobileHeader
-        title={activeNote?.title ?? "Obsidian Cloud"}
+        title={activeNote?.title ?? "Voltex Notes"}
         onMenuOpen={() => setMobileDrawerOpen(true)}
         onBack={historyIdxRef.current > 0 ? navigateBack : undefined}
         showBack={historyIdxRef.current > 0}
@@ -1055,6 +1231,8 @@ export default function ObsidianApp() {
               onRenameNote={renameNote}
               onNoteOpen={openNote}
               onCreateFolder={createFolder}
+              onDeleteFolder={deleteFolder}
+              onRenameFolder={renameFolder}
               onMoveNoteToFolder={moveNoteToFolder}
               onPermanentlyDelete={permanentlyDeleteNote}
               onRestoreNote={restoreNote}
@@ -1073,6 +1251,7 @@ export default function ObsidianApp() {
               onNoteClick={openNote}
               onNewNote={createNote}
               isMobile={isMobile}
+              dirtyNoteIds={dirtyNoteIds}
             />
           ) : state.mainView === "graph" ? (
             <GraphView
@@ -1142,7 +1321,7 @@ export default function ObsidianApp() {
       <MobileDrawer
         isOpen={mobileDrawerOpen}
         onClose={() => setMobileDrawerOpen(false)}
-        title="Obsidian Cloud"
+        title="Voltex Notes"
       >
         <Sidebar
           state={state}
@@ -1151,6 +1330,10 @@ export default function ObsidianApp() {
           onDeleteNote={deleteNote}
           onRenameNote={renameNote}
           onNoteOpen={(id) => { openNote(id); setMobileDrawerOpen(false); }}
+          onCreateFolder={createFolder}
+          onDeleteFolder={deleteFolder}
+          onRenameFolder={renameFolder}
+          onMoveNoteToFolder={moveNoteToFolder}
           isMobile={true}
           onPermanentlyDelete={permanentlyDeleteNote}
           onRestoreNote={restoreNote}
@@ -1266,6 +1449,17 @@ export default function ObsidianApp() {
           onPreferencesChange={handlePreferencesChange}
           onOpenMarketplace={() => patch({ marketplaceOpen: true, settingsOpen: false })}
           onImportNotes={importNotes}
+          onSwitchVault={isElectron() ? async () => {
+            const chosen = await vaultClient.open();
+            if (chosen) {
+              patch({ settingsOpen: false });
+              await loadVault(chosen);
+            }
+          } : undefined}
+          onCreateVault={isElectron() ? async () => {
+            patch({ settingsOpen: false });
+            setVaultNameInput({ parentPath: "" });
+          } : undefined}
         />
       )}
 
@@ -1320,17 +1514,33 @@ export default function ObsidianApp() {
           onCreateVault={isElectron() ? async () => {
             const parentResult = await vaultClient.open();
             if (!parentResult) return;
-            const name = prompt("Vault name:");
-            if (!name) return;
-            const newVault = await vaultClient.create(name, parentResult);
-            setWelcomeModalOpen(false);
-            await loadVault(newVault);
+            setVaultNameInput({ parentPath: parentResult });
           } : undefined}
           recentVaults={isElectron() ? recentVaults : undefined}
           onOpenRecent={isElectron() ? async (vaultDir: string) => {
             setWelcomeModalOpen(false);
             await loadVault(vaultDir);
           } : undefined}
+        />
+      )}
+
+      {/* Vault Name Input Dialog (Electron) */}
+      {vaultNameInput && (
+        <VaultNameDialog
+          onSubmit={async (name) => {
+            let parentPath = vaultNameInput.parentPath;
+            // If no parent path provided, ask user to pick a location
+            if (!parentPath) {
+              const chosen = await vaultClient.open();
+              if (!chosen) return;
+              parentPath = chosen;
+            }
+            const newVault = await vaultClient.create(name, parentPath);
+            setVaultNameInput(null);
+            setWelcomeModalOpen(false);
+            await loadVault(newVault);
+          }}
+          onCancel={() => setVaultNameInput(null)}
         />
       )}
 
@@ -1707,6 +1917,70 @@ function WorkspaceSetupDialog({ onSelect }: { onSelect: (choice: "docs" | "empty
               Continue
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── VaultNameDialog (private sub-component) ─────────────────────────────────
+
+function VaultNameDialog({ onSubmit, onCancel }: { onSubmit: (name: string) => void; onCancel: () => void }) {
+  const [name, setName] = useState("");
+  return (
+    <div
+      className="fixed inset-0 z-[250] flex items-center justify-center"
+      style={{ backdropFilter: "blur(6px)", background: "rgba(0,0,0,0.5)" }}
+      onClick={onCancel}
+    >
+      <div
+        className="w-full max-w-sm mx-4 p-6 rounded-xl"
+        style={{
+          background: "var(--color-obsidian-surface)",
+          border: "1px solid var(--color-obsidian-border)",
+          animation: "scaleIn 0.2s ease",
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--color-obsidian-text)" }}>
+          Vault Name
+        </h3>
+        <input
+          autoFocus
+          className="w-full px-3 py-2 rounded-lg text-sm mb-4 outline-none"
+          style={{
+            background: "var(--color-obsidian-bg)",
+            border: "1px solid var(--color-obsidian-border)",
+            color: "var(--color-obsidian-text)",
+          }}
+          placeholder="My Vault"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && name.trim()) onSubmit(name.trim());
+            if (e.key === "Escape") onCancel();
+          }}
+        />
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-4 py-1.5 rounded-lg text-xs"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => name.trim() && onSubmit(name.trim())}
+            disabled={!name.trim()}
+            className="px-4 py-1.5 rounded-lg text-xs font-medium"
+            style={{
+              background: name.trim() ? "var(--color-obsidian-accent)" : "var(--color-obsidian-surface-2)",
+              color: "#fff",
+              opacity: name.trim() ? 1 : 0.5,
+            }}
+          >
+            Create
+          </button>
         </div>
       </div>
     </div>

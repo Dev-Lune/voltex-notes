@@ -22,6 +22,7 @@ interface EditorProps {
   onNoteClick: (id: string) => void;
   onNewNote: (type?: NoteType) => void;
   isMobile?: boolean;
+  dirtyNoteIds?: Set<string>;
 }
 
 // ─── Note type badge ──────────────────────────────────────────────────────────
@@ -158,7 +159,7 @@ function FindReplaceDialog({ content, onContentChange, onClose, textareaRef }: F
             style={{ color: "var(--color-obsidian-text)" }}
           />
           <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
-            {matches.length > 0 ? `${currentMatch + 1}/${matches.length}` : "No results"}
+            {matches.length > 0 ? `${currentMatch + 1}/${matches.length}` : findText ? "No results" : ""}
           </span>
         </div>
 
@@ -194,6 +195,7 @@ function FindReplaceDialog({ content, onContentChange, onClose, textareaRef }: F
           style={{ color: "var(--color-obsidian-muted-text)" }}
           aria-label="Previous match"
         >
+          <ChevronUp size={13} />
         </button>
         <button
           onClick={() => goToMatch(currentMatch + 1)}
@@ -202,6 +204,7 @@ function FindReplaceDialog({ content, onContentChange, onClose, textareaRef }: F
           style={{ color: "var(--color-obsidian-muted-text)" }}
           aria-label="Next match"
         >
+          <ChevronDown size={13} />
         </button>
 
         {/* Toggle replace */}
@@ -508,6 +511,7 @@ function parseFrontmatter(content: string): { fields: FrontmatterField[]; body: 
     const colonIndex = line.indexOf(":");
     if (colonIndex > 0) {
       const key = line.substring(0, colonIndex).trim();
+      // Preserve everything after the first colon (including array brackets, commas, etc.)
       const value = line.substring(colonIndex + 1).trim();
       fields.push({ key, value });
     }
@@ -592,31 +596,39 @@ function FrontmatterEditor({
       </button>
       {expanded && (
         <div className="px-3 pb-3 flex flex-col gap-2">
-          {fields.map((field, i) => (
+          {fields.map((field, i) => {
+            const isStructuredField = ["id", "tags", "type", "starred", "pinned", "trashed", "trashedAt", "wordCount"].includes(field.key);
+            return (
             <div key={i} className="flex items-center gap-2">
               <input
                 value={field.key}
                 onChange={(e) => updateField(i, e.target.value, field.value)}
+                readOnly={isStructuredField}
                 className="w-24 px-2 py-1 rounded text-xs bg-transparent outline-none"
                 style={{
                   background: "var(--color-obsidian-bg)",
                   border: "1px solid var(--color-obsidian-border)",
                   color: "var(--color-obsidian-accent-soft)",
                   fontFamily: "var(--font-mono)",
+                  opacity: isStructuredField ? 0.6 : 1,
                 }}
               />
               <span style={{ color: "var(--color-obsidian-muted-text)" }}>:</span>
               <input
                 value={field.value}
                 onChange={(e) => updateField(i, field.key, e.target.value)}
+                readOnly={isStructuredField}
                 className="flex-1 px-2 py-1 rounded text-xs bg-transparent outline-none"
                 style={{
                   background: "var(--color-obsidian-bg)",
                   border: "1px solid var(--color-obsidian-border)",
                   color: "var(--color-obsidian-text)",
                   fontFamily: "var(--font-mono)",
+                  opacity: isStructuredField ? 0.6 : 1,
                 }}
+                title={isStructuredField ? "This field is managed by the app" : undefined}
               />
+              {!isStructuredField && (
               <button
                 onClick={() => removeField(i)}
                 className="p-1 rounded hover:bg-white/10 transition-colors"
@@ -625,8 +637,10 @@ function FrontmatterEditor({
               >
                 <X size={12} />
               </button>
+              )}
             </div>
-          ))}
+            );
+          })}
           <button
             onClick={addField}
             className="flex items-center gap-1 px-2 py-1 rounded text-xs transition-colors hover:bg-white/5 self-start"
@@ -649,16 +663,24 @@ function TabBar({
   activeNoteId,
   onActivate,
   onClose,
+  dirtyNoteIds,
 }: {
   openNoteIds: string[];
   notes: Note[];
   activeNoteId: string | null;
   onActivate: (id: string) => void;
   onClose: (id: string) => void;
+  dirtyNoteIds?: Set<string>;
 }) {
+  const activeTabRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    activeTabRef.current?.scrollIntoView({ inline: "nearest", block: "nearest" });
+  }, [activeNoteId]);
+
   return (
     <div
-      className="flex items-center overflow-x-auto shrink-0"
+      className="flex items-center overflow-x-auto shrink-0 scrollbar-thin"
       style={{
         borderBottom: "1px solid var(--color-obsidian-border)",
         background: "var(--color-obsidian-bg)",
@@ -671,6 +693,7 @@ function TabBar({
         return (
           <div
             key={id}
+            ref={isActive ? activeTabRef : undefined}
             className="group flex items-center gap-1.5 px-3 py-2 cursor-pointer shrink-0 transition-colors"
             style={{
               borderRight: "1px solid var(--color-obsidian-border)",
@@ -683,9 +706,14 @@ function TabBar({
           >
             {note?.type === "drawing" && <Pencil size={10} style={{ color: "#cba6f7", flexShrink: 0 }} />}
             {note?.type === "daily" && <CalendarDays size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
+            {note?.type === "kanban" && <LayoutGrid size={10} style={{ color: "#89b4fa", flexShrink: 0 }} />}
+            {note?.type === "table" && <Table2 size={10} style={{ color: "#a6e3a1", flexShrink: 0 }} />}
             <span className="text-xs truncate">{note?.title ?? "Untitled"}</span>
+            {dirtyNoteIds?.has(id) && (
+              <span className="text-xs" style={{ color: "var(--color-obsidian-accent)", lineHeight: 1 }}>•</span>
+            )}
             <button
-              className="opacity-0 group-hover:opacity-100 hover:text-white transition-opacity rounded"
+              className={`${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} hover:text-white transition-opacity rounded`}
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
               aria-label="Close tab"
             >
@@ -1341,7 +1369,18 @@ function Toolbar({
                         onClick={() => {
                           setMoreMenuOpen(false);
                           if (note) {
-                            const blob = new Blob([`# ${note.title}\n\n${note.content}`], { type: "text/markdown" });
+                            if (typeof window !== "undefined" && "electronAPI" in window) {
+                              const api = (window as unknown as { electronAPI: { dialog?: { saveFile: (name: string, content: string, filters?: { name: string; extensions: string[] }[]) => Promise<boolean> } } }).electronAPI;
+                              if (api?.dialog?.saveFile) {
+                                api.dialog.saveFile(
+                                  `${note.title.replace(/[/\\?%*:|"<>]/g, "-")}.md`,
+                                  note.content,
+                                  [{ name: "Markdown", extensions: ["md"] }, { name: "All Files", extensions: ["*"] }]
+                                );
+                                return;
+                              }
+                            }
+                            const blob = new Blob([note.content], { type: "text/markdown" });
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement("a");
                             a.href = url;
@@ -1450,7 +1489,18 @@ function Toolbar({
                         onClick={() => {
                           setMoreMenuOpen(false);
                           if (note) {
-                            const blob = new Blob([`# ${note.title}\n\n${note.content}`], { type: "text/markdown" });
+                            if (typeof window !== "undefined" && "electronAPI" in window) {
+                              const api = (window as unknown as { electronAPI: { dialog?: { saveFile: (name: string, content: string, filters?: { name: string; extensions: string[] }[]) => Promise<boolean> } } }).electronAPI;
+                              if (api?.dialog?.saveFile) {
+                                api.dialog.saveFile(
+                                  `${note.title.replace(/[/\\?%*:|"<>]/g, "-")}.md`,
+                                  note.content,
+                                  [{ name: "Markdown", extensions: ["md"] }, { name: "All Files", extensions: ["*"] }]
+                                );
+                                return;
+                              }
+                            }
+                            const blob = new Blob([note.content], { type: "text/markdown" });
                             const url = URL.createObjectURL(blob);
                             const a = document.createElement("a");
                             a.href = url;
@@ -1534,16 +1584,6 @@ function Toolbar({
             </div>
           </>
         )}
-
-        <button
-          onClick={() => onNewNote()}
-          className={`flex items-center gap-1 rounded-md text-xs transition-colors ${isMobile ? "px-3 py-2" : "px-2 py-1"}`}
-          style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
-          title="New note (Ctrl+N)"
-        >
-          <Plus size={12} />
-          New
-        </button>
       </div>
 
       {/* Row 2: Formatting tools — mobile only, wrapping */}
@@ -1654,7 +1694,7 @@ function PomodoroWidget({ state, onStateChange }: {
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-50 rounded-xl shadow-2xl"
+    <div className="fixed bottom-24 right-6 z-50 rounded-xl shadow-2xl"
       style={{ background: "var(--color-obsidian-surface)", border: `1px solid ${modeColor}40` }}>
       <div className="flex items-center gap-2 px-3 py-2">
         <div className="w-2 h-2 rounded-full" style={{ background: modeColor, boxShadow: pom.running ? `0 0 6px ${modeColor}` : "none" }} />
@@ -1811,6 +1851,18 @@ function exportNoteAsHTML(note: Note) {
   <div>${note.content.replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\n/g, "<br>")}</div>
 </body>
 </html>`;
+  // Use native save dialog in Electron
+  if (typeof window !== "undefined" && "electronAPI" in window) {
+    const api = (window as unknown as { electronAPI: { dialog?: { saveFile: (name: string, content: string, filters?: { name: string; extensions: string[] }[]) => Promise<boolean> } } }).electronAPI;
+    if (api?.dialog?.saveFile) {
+      api.dialog.saveFile(
+        `${note.title.replace(/[/\\?%*:|"<>]/g, "-")}.html`,
+        html,
+        [{ name: "HTML", extensions: ["html", "htm"] }, { name: "All Files", extensions: ["*"] }]
+      );
+      return;
+    }
+  }
   const blob = new Blob([html], { type: "text/html" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -2613,6 +2665,7 @@ export default function Editor({
   onNoteClick,
   onNewNote,
   isMobile = false,
+  dirtyNoteIds,
 }: EditorProps) {
   const { notes, activeNoteId, openNoteIds } = state;
   // On mobile, force split view to editor mode
@@ -2946,6 +2999,7 @@ export default function Editor({
           activeNoteId={activeNoteId}
           onActivate={(id) => onStateChange({ activeNoteId: id })}
           onClose={closeTab}
+          dirtyNoteIds={dirtyNoteIds}
         />
       )}
       {/* Simplified toolbar on mobile */}
