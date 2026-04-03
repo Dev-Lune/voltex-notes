@@ -128,6 +128,7 @@ export default function ObsidianApp() {
   const vaultSaveTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const fileWatcherCleanupRef = useRef<(() => void) | null>(null);
   const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(new Set());
+  const [syncPromptVisible, setSyncPromptVisible] = useState(false);
 
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
@@ -220,6 +221,15 @@ export default function ObsidianApp() {
     });
   }, [patch]);
 
+  // Open vault + optionally show sync prompt
+  const openVaultWithPrompt = useCallback(async (vaultDir: string) => {
+    await loadVault(vaultDir);
+    // If user is signed in, prompt to sync
+    if (state.user) {
+      setSyncPromptVisible(true);
+    }
+  }, [loadVault, state.user]);
+
   // First-run detection: show welcome modal and/or workspace setup
   useEffect(() => {
     // ── Electron: auto-open last vault ──────────────────────────────────
@@ -300,6 +310,11 @@ export default function ObsidianApp() {
   useEffect(() => {
     const theme = THEMES.find((t) => t.id === state.activeThemeId) ?? THEMES[0];
     applyTheme(theme);
+    // Sync Electron window background color with theme
+    if (isElectron()) {
+      const bgColor = theme.vars["--obs-bg"] ?? "#1e1e2e";
+      windowClient.setBackgroundColor(bgColor);
+    }
     // Save to localStorage
     try { localStorage.setItem("voltex-theme", state.activeThemeId); } catch { /* ignore */ }
   }, [state.activeThemeId]);
@@ -397,6 +412,20 @@ export default function ObsidianApp() {
                     };
                   });
 
+                  // Rebuild folders from remote notes folder IDs
+                  const remoteFolderIds = new Set<string>();
+                  for (const n of mergedNotes) {
+                    if (n.folder && n.folder !== "root") remoteFolderIds.add(n.folder);
+                  }
+                  // Merge with existing folders (keep local folders too)
+                  const existingFolderMap = new Map(prev.folders.map(f => [f.id, f]));
+                  for (const fid of remoteFolderIds) {
+                    if (!existingFolderMap.has(fid)) {
+                      existingFolderMap.set(fid, { id: fid, name: fid, parentId: "root", synced: true });
+                    }
+                  }
+                  const mergedFolders = Array.from(existingFolderMap.values());
+
                   // Fix active/open note IDs to valid notes
                   const noteIds = new Set(mergedNotes.map((n) => n.id));
                   const newOpenNoteIds = prev.openNoteIds.filter((id) => noteIds.has(id));
@@ -411,6 +440,7 @@ export default function ObsidianApp() {
                   return {
                     ...prev,
                     notes: mergedNotes,
+                    folders: mergedFolders,
                     activeNoteId: newActiveNoteId,
                     openNoteIds: newOpenNoteIds,
                   };
@@ -418,6 +448,14 @@ export default function ObsidianApp() {
               });
 
               syncServiceRef.current = service;
+
+              // Fetch synced folder IDs from Firestore
+              service.fetchSyncedFolderIds().then((ids) => {
+                if (ids.length > 0) {
+                  patch({ syncedFolderIds: ids });
+                }
+              });
+
               await service.initialize();
             } catch { /* SyncService init failed — ignore */ }
           } else {
@@ -1075,7 +1113,7 @@ export default function ObsidianApp() {
     cleanups.push(electronOn('menu:open-settings', () => { patch({ settingsOpen: true }); }));
     cleanups.push(electronOn('menu:open-vault', async () => {
       const chosen = await vaultClient.open();
-      if (chosen) await loadVault(chosen);
+      if (chosen) await openVaultWithPrompt(chosen);
     }));
     cleanups.push(electronOn('menu:toggle-sidebar', () => {
       patch({ sidebarCollapsed: !state.sidebarCollapsed });
@@ -1279,6 +1317,7 @@ export default function ObsidianApp() {
               onPermanentlyDelete={permanentlyDeleteNote}
               onRestoreNote={restoreNote}
               onTogglePin={togglePinNote}
+              vaultPath={vaultPath ?? undefined}
             />
           </div>
         )}
@@ -1380,6 +1419,7 @@ export default function ObsidianApp() {
           onPermanentlyDelete={permanentlyDeleteNote}
           onRestoreNote={restoreNote}
           onTogglePin={togglePinNote}
+          vaultPath={vaultPath ?? undefined}
         />
       </MobileDrawer>
 
@@ -1486,7 +1526,16 @@ export default function ObsidianApp() {
           onInstall={handleMarketplaceInstall}
           onUninstall={handleMarketplaceUninstall}
           onSignOut={handleSignOut}
-          onSyncStatusChange={(s) => patch({ syncStatus: s })}
+          onSyncStatusChange={(s) => {
+            patch({ syncStatus: s });
+            if (s === "syncing" && syncServiceRef.current) {
+              syncServiceRef.current.syncAll(state.notes).then(() => {
+                syncServiceRef.current?.pushFolders(state.folders);
+                const syncedIds = state.folders.filter(f => f.id !== "root").map(f => f.id);
+                patch({ syncedFolderIds: syncedIds });
+              });
+            }
+          }}
           onThemeChange={handleThemeChange}
           onPreferencesChange={handlePreferencesChange}
           onOpenMarketplace={() => patch({ marketplaceOpen: true, settingsOpen: false })}
@@ -1495,7 +1544,7 @@ export default function ObsidianApp() {
             const chosen = await vaultClient.open();
             if (chosen) {
               patch({ settingsOpen: false });
-              await loadVault(chosen);
+              await openVaultWithPrompt(chosen);
             }
           } : undefined}
           onCreateVault={isElectron() ? async () => {
@@ -1550,7 +1599,7 @@ export default function ObsidianApp() {
             const chosen = await vaultClient.open();
             if (chosen) {
               setWelcomeModalOpen(false);
-              await loadVault(chosen);
+              await openVaultWithPrompt(chosen);
             }
           } : undefined}
           onCreateVault={isElectron() ? async () => {
@@ -1561,7 +1610,7 @@ export default function ObsidianApp() {
           recentVaults={isElectron() ? recentVaults : undefined}
           onOpenRecent={isElectron() ? async (vaultDir: string) => {
             setWelcomeModalOpen(false);
-            await loadVault(vaultDir);
+            await openVaultWithPrompt(vaultDir);
           } : undefined}
         />
       )}
@@ -1580,7 +1629,7 @@ export default function ObsidianApp() {
             const newVault = await vaultClient.create(name, parentPath);
             setVaultNameInput(null);
             setWelcomeModalOpen(false);
-            await loadVault(newVault);
+            await openVaultWithPrompt(newVault);
           }}
           onCancel={() => setVaultNameInput(null)}
         />
@@ -1634,6 +1683,52 @@ export default function ObsidianApp() {
           <p className="text-sm leading-snug" style={{ color: "var(--color-obsidian-text)" }}>
             {pluginToast.message}
           </p>
+        </div>
+      )}
+
+      {/* Vault sync prompt */}
+      {syncPromptVisible && (
+        <div
+          className="fixed bottom-6 left-1/2 z-[9999] max-w-sm px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3"
+          style={{
+            transform: "translateX(-50%)",
+            background: "var(--color-obsidian-surface)",
+            border: "1px solid var(--color-obsidian-border)",
+            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
+          }}
+        >
+          <Cloud size={18} style={{ color: "var(--color-obsidian-accent)", flexShrink: 0 }} />
+          <span className="text-sm" style={{ color: "var(--color-obsidian-text)" }}>
+            Sync <strong>{vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() : "vault"}</strong> to cloud?
+          </span>
+          <button
+            className="px-3 py-1 rounded-md text-xs font-medium"
+            style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+            onClick={async () => {
+              setSyncPromptVisible(false);
+              if (syncServiceRef.current) {
+                patch({ syncStatus: "syncing" });
+                await syncServiceRef.current.syncAll(state.notes);
+                // Also push folder metadata
+                await syncServiceRef.current.pushFolders(state.folders);
+                // Mark all current folders as synced
+                const syncedIds = state.folders.filter(f => f.id !== "root").map(f => f.id);
+                patch({
+                  syncedFolderIds: syncedIds,
+                  folders: state.folders.map(f => f.id === "root" ? f : { ...f, synced: true }),
+                });
+              }
+            }}
+          >
+            Sync
+          </button>
+          <button
+            className="px-2 py-1 rounded-md text-xs"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+            onClick={() => setSyncPromptVisible(false)}
+          >
+            Dismiss
+          </button>
         </div>
       )}
     </div>

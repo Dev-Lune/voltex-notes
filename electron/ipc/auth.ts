@@ -74,23 +74,60 @@ function exchangeCode(
 /** HTML page shown after successful auth */
 function successHtml(): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4;flex-direction:column;gap:12px;}
-h2{margin:0;font-size:20px;} p{margin:0;color:#a6adc8;font-size:14px;}
-.check{width:48px;height:48px;border-radius:50%;background:#a6e3a1;display:flex;align-items:center;
-justify-content:center;font-size:24px;color:#1e1e2e;}</style></head><body>
-<div class="check">✓</div><h2>Signed in to Voltex Notes</h2>
-<p>You can close this tab and return to the app.</p></body></html>`
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;
+height:100vh;background:#0f1117;color:#d4d8e8;flex-direction:column;gap:24px;}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.brand svg{width:28px;height:28px;}
+.brand span{font-size:17px;font-weight:600;letter-spacing:0.3px;}
+.check{width:52px;height:52px;border-radius:50%;background:rgba(59,142,245,0.12);display:flex;align-items:center;
+justify-content:center;animation:scaleIn 0.4s ease-out;}
+.check svg{width:26px;height:26px;}
+h2{font-size:18px;font-weight:600;letter-spacing:0.2px;}
+p{color:#6b7280;font-size:13px;}
+@keyframes scaleIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
+</style></head><body>
+<div class="brand">
+  <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#3b8ef5" fill-opacity="0.12"/><path d="M8 16l4-8 4 8-4 8z" fill="#3b8ef5"/><path d="M16 16l4-8 4 8-4 8z" fill="#3b8ef5" fill-opacity="0.5"/></svg>
+  <span>Voltex Notes</span>
+</div>
+<div class="check">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#3b8ef5" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+</div>
+<h2>Signed in successfully</h2>
+<p>You can close this tab and return to the app.</p>
+</body></html>`
 }
 
 /** HTML page shown on auth error */
 function errorHtml(msg: string): string {
   return `<!DOCTYPE html><html><head><meta charset="utf-8">
-<style>body{font-family:system-ui,sans-serif;display:flex;align-items:center;justify-content:center;
-height:100vh;margin:0;background:#1e1e2e;color:#cdd6f4;flex-direction:column;gap:12px;}
-h2{margin:0;font-size:20px;color:#f38ba8;} p{margin:0;color:#a6adc8;font-size:14px;}</style></head><body>
-<h2>Sign-in failed</h2><p>${msg.replace(/</g, '&lt;')}</p>
-<p>Close this tab and try again.</p></body></html>`
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:system-ui,-apple-system,sans-serif;display:flex;align-items:center;justify-content:center;
+height:100vh;background:#0f1117;color:#d4d8e8;flex-direction:column;gap:24px;}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:8px;}
+.brand svg{width:28px;height:28px;}
+.brand span{font-size:17px;font-weight:600;letter-spacing:0.3px;}
+.icon{width:52px;height:52px;border-radius:50%;background:rgba(239,68,68,0.12);display:flex;align-items:center;
+justify-content:center;animation:scaleIn 0.4s ease-out;}
+.icon svg{width:26px;height:26px;}
+h2{font-size:18px;font-weight:600;color:#ef4444;letter-spacing:0.2px;}
+p{color:#6b7280;font-size:13px;}
+@keyframes scaleIn{0%{transform:scale(0.5);opacity:0}100%{transform:scale(1);opacity:1}}
+</style></head><body>
+<div class="brand">
+  <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#3b8ef5" fill-opacity="0.12"/><path d="M8 16l4-8 4 8-4 8z" fill="#3b8ef5"/><path d="M16 16l4-8 4 8-4 8z" fill="#3b8ef5" fill-opacity="0.5"/></svg>
+  <span>Voltex Notes</span>
+</div>
+<div class="icon">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+</div>
+<h2>Sign-in failed</h2>
+<p>${msg.replace(/</g, '&lt;')}</p>
+<p>Close this tab and try again.</p>
+</body></html>`
 }
 
 export function registerAuthHandlers(): void {

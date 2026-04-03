@@ -30,6 +30,7 @@ interface ElectronAPI {
   };
   window: {
     setTitle: (title: string) => Promise<void>;
+    setBackgroundColor: (color: string) => Promise<void>;
   };
   app: {
     getVersion: () => Promise<string>;

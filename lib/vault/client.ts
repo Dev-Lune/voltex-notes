@@ -30,6 +30,7 @@ interface VaultElectronAPI {
   };
   window: {
     setTitle: (title: string) => Promise<void>;
+    setBackgroundColor: (color: string) => Promise<void>;
   };
   app: {
     getVersion: () => Promise<string>;
@@ -123,6 +124,8 @@ export const dialogClient = {
 export const windowClient = {
   setTitle: (title: string) =>
     api().window.setTitle(title),
+  setBackgroundColor: (color: string) =>
+    api().window.setBackgroundColor(color),
 }
 
 export const appClient = {

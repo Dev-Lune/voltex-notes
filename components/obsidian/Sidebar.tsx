@@ -28,6 +28,7 @@ interface SidebarProps {
   onPermanentlyDelete?: (id: string) => void;
   onRestoreNote?: (id: string) => void;
   onTogglePin?: (id: string) => void;
+  vaultPath?: string;
 }
 
 type SortMode = "modified" | "created" | "title-asc" | "title-desc";
@@ -364,6 +365,7 @@ function FolderGroup({
   selectionMode,
   selectedIds,
   onToggleSelect,
+  isSynced,
 }: {
   folder: FolderType;
   notes: Note[];
@@ -379,6 +381,7 @@ function FolderGroup({
   selectionMode?: boolean;
   selectedIds?: Set<string>;
   onToggleSelect?: (id: string) => void;
+  isSynced?: boolean;
 }) {
   const [open, setOpen] = useState(true);
   const [dragOver, setDragOver] = useState(false);
@@ -464,6 +467,7 @@ function FolderGroup({
           {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
           <Folder size={11} />
           <span className="flex-1 truncate">{folder.name}</span>
+          {isSynced && <Cloud size={10} style={{ color: "var(--color-obsidian-accent)", opacity: 0.7, flexShrink: 0 }} />}
           <span className="opacity-60 group-hover/folder:hidden">{folderNotes.length}</span>
           <div className="hidden group-hover/folder:flex items-center gap-0.5">
             <button
@@ -593,8 +597,9 @@ export default function Sidebar({
   onPermanentlyDelete,
   onRestoreNote,
   onTogglePin,
+  vaultPath,
 }: SidebarProps) {
-  const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders } = state;
+  const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders, syncedFolderIds } = state;
   // Filter out trashed notes for normal views
   const notes = allNotes.filter((n) => !n.trashed);
   const trashedNotes = allNotes.filter((n) => n.trashed);
@@ -856,7 +861,7 @@ export default function Sidebar({
             className="text-xs font-semibold uppercase tracking-wider"
             style={{ color: "var(--color-obsidian-muted-text)" }}
           >
-            {sidebarView === "files" ? "Explorer"
+            {sidebarView === "files" ? (vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Explorer" : "Explorer")
               : sidebarView === "search" ? "Search"
               : sidebarView === "tags" ? "Tags"
               : sidebarView === "bookmarks" ? "Bookmarks"
@@ -1113,6 +1118,7 @@ export default function Sidebar({
                   selectionMode={selectionMode}
                   selectedIds={selectedIds}
                   onToggleSelect={toggleSelect}
+                  isSynced={folder.synced || syncedFolderIds?.includes(folder.id)}
                 />
               ))}
               {/* Root-level notes (no folder) — also a drop zone */}

@@ -16,7 +16,7 @@ import {
   type Unsubscribe,
 } from "firebase/firestore";
 import { getFirebaseDb } from "./config";
-import type { Note } from "@/components/obsidian/data";
+import type { Note, Folder } from "@/components/obsidian/data";
 import { SAMPLE_NOTE_IDS } from "@/components/obsidian/data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -237,6 +237,53 @@ export class SyncService {
       this.state.lastSyncedAt = new Date();
     } catch {
       this.updateStatus("error");
+    }
+  }
+
+  /** Sync folder metadata to Firestore so cloud knows folder names. */
+  async pushFolders(folders: Folder[]): Promise<void> {
+    const db = getFirebaseDb();
+    if (!db) return;
+
+    try {
+      for (const folder of folders) {
+        if (folder.id === "root") continue;
+        const folderRef = doc(db, "users", this.userId, "folders", folder.id);
+        await setDoc(folderRef, {
+          id: folder.id,
+          name: folder.name,
+          parentId: folder.parentId,
+          _serverUpdatedAt: serverTimestamp(),
+        }, { merge: true });
+      }
+    } catch {
+      // Folder sync is best-effort, don't break note sync
+    }
+  }
+
+  /** Fetch synced folder IDs from Firestore. */
+  async fetchSyncedFolderIds(): Promise<string[]> {
+    const db = getFirebaseDb();
+    if (!db) return [];
+
+    try {
+      const foldersRef = collection(db, "users", this.userId, "folders");
+      const q = query(foldersRef);
+      return new Promise((resolve) => {
+        const unsub = onSnapshot(q, (snapshot) => {
+          unsub();
+          const ids: string[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.id) ids.push(data.id as string);
+          });
+          resolve(ids);
+        }, () => {
+          resolve([]);
+        });
+      });
+    } catch {
+      return [];
     }
   }
 

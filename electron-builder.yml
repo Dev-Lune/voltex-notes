@@ -79,12 +79,38 @@ releaseInfo:
   releaseNotes: |
     ## What's New in v1.1.0
 
-    ### Features
+    ### Live Preview (CodeMirror 6)
+    - Brand-new live preview mode powered by CodeMirror 6
+    - Markdown syntax hides as you type — headings, bold, italic, links render inline
+    - Interactive checkboxes, horizontal rules, wikilink chips, and styled list bullets
+    - Smart Enter continues lists, tasks, and numbered items automatically
+    - Wikilink autocomplete via `[[` with note suggestions
+    - Cycle between Live / Source / Reading with Ctrl+E
+
+    ### 24 Themes
+    - 15 new themes: One Dark Pro, Rosé Pine, Everforest, Ayu Dark, Kanagawa, Moonlight, GitHub Dark, Material Ocean, Night Owl, Palenight, Solarized Light, Vitesse Dark, Catppuccin Latte, Poimandres, and more
+    - Window background color now matches the active theme (Electron)
+
+    ### Per-Folder Cloud Sync
+    - Vault sync prompt — when opening a vault while signed in, prompts to sync by folder name
+    - Folder metadata synced to Firestore (`/users/{uid}/folders/{folderId}`)
+    - Synced folders show a cloud icon in the explorer sidebar
+    - Remote sync rebuilds folder structure from cloud notes automatically
+
+    ### Vault & Explorer
+    - Explorer header shows the vault folder name instead of generic "Explorer"
     - Folder management — right-click folders to rename or delete them
     - Create Vault from Settings (no longer only in Welcome screen)
     - Google Sign-In now opens in your system browser (Electron)
 
+    ### UI Redesign
+    - Redesigned loading screen with Voltex brand logo and animated dots
+    - Redesigned Electron splash screen to match brand identity
+    - Redesigned Google OAuth success/error pages in system browser
+    - Sample/built-in notes are excluded from cloud sync to prevent clutter
+
     ### Fixes
+    - Fixed force sync getting stuck on "Syncing…" forever
     - Fixed file size inconsistency between root and folder notes in sidebar
     - Removed inaccessible default folders (Templates, Marketplace Data)
     - Mobile sidebar now has folder create/delete/rename support

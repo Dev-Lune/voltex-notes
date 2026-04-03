@@ -33,6 +33,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   },
   window: {
     setTitle: (title: string) => ipcRenderer.invoke('window:set-title', title),
+    setBackgroundColor: (color: string) => ipcRenderer.invoke('window:set-background-color', color),
   },
   app: {
     getVersion: () => ipcRenderer.invoke('app:get-version'),

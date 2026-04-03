@@ -52,6 +52,8 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 
 ### Cloud & Real-Time Sync
 - **Real-time Firestore sync** — notes sync instantly across all devices via Firestore `onSnapshot` listeners
+- **Per-folder cloud sync** — sync individual folders to the cloud; synced folders show a cloud icon in the explorer
+- **Vault sync prompt** — when opening a vault while signed in, a prompt offers to sync the vault by name
 - **Offline-first** — full offline support with localStorage fallback; works without an account
 - **Theme sync** — selected theme and preferences sync across devices when logged in
 - **Version history** — diff-based version snapshots stored per note with one-click rollback
@@ -70,10 +72,11 @@ Voltex Notes is a modern, full-featured note-taking app with bidirectional linki
 - **Feature gating** — drawing and kanban note types require their plugins
 
 ### Themes
-- **9 built-in themes** — Voltex Dark (default), Nord, Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin, Rosé Pine, and more
+- **24 built-in themes** — Voltex Dark (default), Nord, Dracula, Gruvbox, Solarized, Tokyo Night, Catppuccin, Rosé Pine, One Dark Pro, Everforest, Kanagawa, Material Ocean, and more
 - **Custom theme editor** — create and apply custom color palettes
 - **Live preview** — see theme changes in real-time
 - **Cross-device sync** — theme preference syncs via Firestore when logged in
+- **Window color sync** — Electron app window background matches the active theme
 
 ### Note Types
 - **Markdown** — rich text with wiki-links and formatting

@@ -434,6 +434,13 @@ function registerExtraHandlers(): void {
     mainWindow?.setTitle(title)
   })
 
+  // Set window background color to match theme
+  ipcMain.handle('window:set-background-color', (_event, color: string) => {
+    if (mainWindow && /^#[0-9a-fA-F]{6}$/.test(color)) {
+      mainWindow.setBackgroundColor(color)
+    }
+  })
+
   // App info for renderer
   ipcMain.handle('app:get-version', () => app.getVersion())
   ipcMain.handle('app:get-platform', () => process.platform)
@@ -499,7 +506,7 @@ if (!gotLock) {
     // Show splash screen while Next.js boots
     splashWindow = new BrowserWindow({
       width: 340,
-      height: 220,
+      height: 200,
       frame: false,
       resizable: false,
       transparent: true,
@@ -512,15 +519,22 @@ if (!gotLock) {
       <!DOCTYPE html>
       <html><head><style>
         body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;
-             background:rgba(30,30,46,0.95);border-radius:16px;font-family:system-ui,sans-serif;color:#cdd6f4;flex-direction:column;gap:12px;}
-        .spinner{width:28px;height:28px;border:3px solid #45475a;border-top-color:#cba6f7;border-radius:50%;animation:spin .8s linear infinite;}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        h2{font-size:18px;font-weight:600;margin:0;letter-spacing:0.5px;}
-        p{font-size:12px;color:#a6adc8;margin:0;}
+             background:rgba(15,17,23,0.97);border-radius:16px;font-family:system-ui,-apple-system,sans-serif;
+             color:#d4d8e8;flex-direction:column;gap:16px;-webkit-app-region:drag;}
+        .brand{display:flex;align-items:center;gap:10px;}
+        .brand svg{width:28px;height:28px;}
+        .brand span{font-size:17px;font-weight:600;letter-spacing:0.3px;}
+        .dots{display:flex;gap:6px;}
+        .dots .dot{width:5px;height:5px;border-radius:50%;background:#3b8ef5;animation:pulse 1.2s ease-in-out infinite;}
+        .dots .dot:nth-child(2){animation-delay:0.2s;}
+        .dots .dot:nth-child(3){animation-delay:0.4s;}
+        @keyframes pulse{0%,100%{opacity:0.3;transform:scale(0.8)}50%{opacity:1;transform:scale(1.2)}}
       </style></head><body>
-        <h2>Voltex Notes</h2>
-        <div class="spinner"></div>
-        <p>Loading&hellip;</p>
+        <div class="brand">
+          <svg viewBox="0 0 32 32" fill="none"><rect width="32" height="32" rx="8" fill="#3b8ef5" fill-opacity="0.12"/><path d="M8 16l4-8 4 8-4 8z" fill="#3b8ef5"/><path d="M16 16l4-8 4 8-4 8z" fill="#3b8ef5" fill-opacity="0.5"/></svg>
+          <span>Voltex Notes</span>
+        </div>
+        <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
       </body></html>
     `)}`)
 
