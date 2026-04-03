@@ -1,12 +1,13 @@
 package `in`.devlune.voltex.data.sync
 
 import `in`.devlune.voltex.data.local.entity.NoteEntity
+import javax.inject.Inject
 
 /**
  * Resolves conflicts between a local note and a remote note.
  * Strategy matches web app's FirestoreUserSettings.sync.conflictResolution options.
  */
-class ConflictResolver {
+class ConflictResolver @Inject constructor() {
 
     enum class Strategy { LOCAL_WINS, REMOTE_WINS, NEWER_WINS }
 
