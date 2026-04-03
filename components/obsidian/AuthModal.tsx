@@ -28,13 +28,13 @@ export default function AuthModal({ onClose, onAuth }: AuthModalProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const firebaseErrorMessage = (code: string): string => {
+  const firebaseErrorMessage = (code: string, isGoogleAttempt = false): string => {
     switch (code) {
       case "auth/invalid-email": return "Invalid email address.";
       case "auth/user-disabled": return "This account has been disabled.";
       case "auth/user-not-found": return "No account found with this email.";
       case "auth/wrong-password": return "Incorrect password.";
-      case "auth/invalid-credential": return "Invalid email or password.";
+      case "auth/invalid-credential": return isGoogleAttempt ? "Google sign-in rejected by Firebase. Ensure NEXT_PUBLIC_GOOGLE_CLIENT_ID matches the Web Client ID in Firebase Console → Authentication → Google." : "Invalid email or password.";
       case "auth/email-already-in-use": return "An account with this email already exists.";
       case "auth/weak-password": return "Password must be at least 6 characters.";
       case "auth/too-many-requests": return "Too many attempts. Please try again later.";
@@ -113,6 +113,11 @@ export default function AuthModal({ onClose, onAuth }: AuthModalProps) {
           setLoading(false);
           return;
         }
+        if (!result.idToken) {
+          setError("Google did not return an ID token. Ensure the OAuth client type is 'Web application' in Google Cloud Console.");
+          setLoading(false);
+          return;
+        }
         // Exchange the ID token for a Firebase credential
         const credential = GoogleAuthProvider.credential(result.idToken);
         const cred = await signInWithCredential(auth, credential);
@@ -125,7 +130,7 @@ export default function AuthModal({ onClose, onAuth }: AuthModalProps) {
       }
     } catch (err: unknown) {
       const code = (err as { code?: string })?.code || "";
-      setError(firebaseErrorMessage(code));
+      setError(firebaseErrorMessage(code, true));
     } finally {
       setLoading(false);
     }

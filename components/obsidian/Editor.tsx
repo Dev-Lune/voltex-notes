@@ -15,6 +15,16 @@ import { Note, AppState, countWords, NoteType } from "./data";
 import MarkdownRenderer from "./MarkdownRenderer";
 import ExcalidrawCanvas from "./ExcalidrawCanvas";
 
+// CodeMirror 6
+import { EditorState, StateField, type Extension } from "@codemirror/state";
+import { EditorView, Decoration, type DecorationSet, WidgetType, ViewPlugin, type ViewUpdate, keymap } from "@codemirror/view";
+import { markdown, markdownLanguage } from "@codemirror/lang-markdown";
+import { syntaxHighlighting, HighlightStyle } from "@codemirror/language";
+import { languages } from "@codemirror/language-data";
+import { defaultKeymap, history, historyKeymap } from "@codemirror/commands";
+import { closeBrackets, closeBracketsKeymap, autocompletion, type CompletionContext, type CompletionSource } from "@codemirror/autocomplete";
+import { tags } from "@lezer/highlight";
+
 interface EditorProps {
   state: AppState;
   onStateChange: (patch: Partial<AppState>) => void;
@@ -2341,54 +2351,463 @@ function PreviewPane({
   );
 }
 
-// ─── Live Preview Pane ────────────────────────────────────────────────────────
+// ─── Live Preview Pane (CodeMirror 6) ─────────────────────────────────────────
 
-interface LiveBlock {
-  text: string;
-  type: "text" | "code" | "empty";
-  startLine: number;
+// --- CM6 Widgets ---
+
+class HRWidget extends WidgetType {
+  toDOM() {
+    const hr = document.createElement("hr");
+    hr.style.border = "none";
+    hr.style.borderTop = "1px solid var(--color-obsidian-border)";
+    hr.style.margin = "1.2em 0";
+    return hr;
+  }
+  eq() { return true; }
 }
 
-function parseLiveBlocks(content: string): LiveBlock[] {
-  const lines = content.split("\n");
-  const blocks: LiveBlock[] = [];
-  let current: string[] = [];
-  let currentStart = 0;
+class CheckboxWidget extends WidgetType {
+  constructor(readonly checked: boolean) { super(); }
+  toDOM(view: EditorView) {
+    const cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.checked = this.checked;
+    cb.style.cursor = "pointer";
+    cb.style.verticalAlign = "middle";
+    cb.style.marginRight = "6px";
+    cb.style.accentColor = "var(--color-obsidian-accent)";
+    cb.style.width = "15px";
+    cb.style.height = "15px";
+    cb.addEventListener("mousedown", (e) => {
+      e.preventDefault();
+      const pos = view.posAtDOM(cb);
+      const line = view.state.doc.lineAt(pos);
+      const newText = this.checked
+        ? line.text.replace("[x]", "[ ]")
+        : line.text.replace("[ ]", "[x]");
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: newText } });
+    });
+    return cb;
+  }
+  eq(w: CheckboxWidget) { return this.checked === w.checked; }
+  ignoreEvent() { return false; }
+}
+
+class WikilinkWidget extends WidgetType {
+  constructor(readonly title: string, readonly display: string, readonly onClick: (t: string) => void) { super(); }
+  toDOM() {
+    const span = document.createElement("span");
+    span.textContent = this.display;
+    span.style.color = "var(--color-obsidian-accent)";
+    span.style.textDecoration = "underline";
+    span.style.textDecorationStyle = "dotted";
+    span.style.textUnderlineOffset = "3px";
+    span.style.cursor = "pointer";
+    span.addEventListener("click", (e) => { e.preventDefault(); e.stopPropagation(); this.onClick(this.title); });
+    return span;
+  }
+  eq(w: WikilinkWidget) { return this.title === w.title && this.display === w.display; }
+  ignoreEvent() { return false; }
+}
+
+// --- CM6 Theme ---
+
+const livePreviewTheme = EditorView.theme({
+  "&": { backgroundColor: "transparent", color: "var(--color-obsidian-text)" },
+  "&.cm-focused": { outline: "none" },
+  ".cm-content": { caretColor: "var(--color-obsidian-accent)", fontFamily: "inherit", padding: "0" },
+  ".cm-line": { padding: "0", lineHeight: "1.6" },
+  ".cm-cursor, .cm-dropCursor": { borderLeftColor: "var(--color-obsidian-accent)", borderLeftWidth: "2px" },
+  "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, ::selection": { background: "rgba(124,106,247,0.2) !important" },
+  ".cm-activeLine": { backgroundColor: "transparent" },
+  "&.cm-focused .cm-activeLine": { backgroundColor: "rgba(124,106,247,0.04)" },
+  ".cm-gutters": { display: "none" },
+  ".cm-scroller": { overflow: "visible !important", fontFamily: "inherit" },
+  // Decorated heading sizes
+  ".cm-heading-1": { fontSize: "2em", fontWeight: "700", lineHeight: "1.3" },
+  ".cm-heading-2": { fontSize: "1.6em", fontWeight: "600", lineHeight: "1.35" },
+  ".cm-heading-3": { fontSize: "1.37em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-4": { fontSize: "1.1em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-5": { fontSize: "1em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-6": { fontSize: "0.85em", fontWeight: "600", lineHeight: "1.4" },
+  // Inline decoration classes
+  ".cm-lp-strong": { fontWeight: "700" },
+  ".cm-lp-em": { fontStyle: "italic" },
+  ".cm-lp-strike": { textDecoration: "line-through" },
+  ".cm-lp-code": {
+    backgroundColor: "var(--color-obsidian-code-bg, rgba(0,0,0,0.15))",
+    padding: "2px 5px", borderRadius: "4px",
+    fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: "0.85em",
+  },
+  ".cm-lp-link": { color: "var(--color-obsidian-accent)", textDecoration: "underline" },
+  ".cm-lp-highlight": { backgroundColor: "rgba(255,213,0,0.25)", borderRadius: "2px", padding: "1px 0" },
+  ".cm-blockquote-line": {
+    borderLeft: "3px solid var(--color-obsidian-accent-soft, rgba(124,106,247,0.4))",
+    paddingLeft: "16px !important", opacity: "0.85",
+  },
+  ".cm-codeblock-line": {
+    backgroundColor: "var(--color-obsidian-code-bg, rgba(0,0,0,0.1))",
+    fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: "0.9em",
+  },
+  // Bullet point for list items
+  ".cm-list-bullet::before": { content: '"•"', marginRight: "6px", color: "var(--color-obsidian-muted-text)" },
+});
+
+// --- CM6 Syntax highlight for raw mode (active line) ---
+
+const obsidianHighlightStyle = syntaxHighlighting(HighlightStyle.define([
+  { tag: tags.heading1, fontSize: "2em", fontWeight: "700" },
+  { tag: tags.heading2, fontSize: "1.6em", fontWeight: "600" },
+  { tag: tags.heading3, fontSize: "1.37em", fontWeight: "600" },
+  { tag: tags.heading4, fontSize: "1.1em", fontWeight: "600" },
+  { tag: tags.heading5, fontWeight: "600" },
+  { tag: tags.heading6, fontWeight: "600", fontSize: "0.85em" },
+  { tag: tags.strong, fontWeight: "700" },
+  { tag: tags.emphasis, fontStyle: "italic" },
+  { tag: tags.strikethrough, textDecoration: "line-through" },
+  { tag: tags.monospace, fontFamily: "var(--font-mono, ui-monospace, monospace)", fontSize: "0.9em" },
+  { tag: tags.link, color: "var(--color-obsidian-accent)" },
+  { tag: tags.url, color: "var(--color-obsidian-muted-text)", fontSize: "0.9em" },
+  { tag: tags.meta, color: "var(--color-obsidian-muted-text)" },
+  { tag: tags.quote, color: "var(--color-obsidian-muted-text)" },
+  { tag: tags.processingInstruction, color: "var(--color-obsidian-muted-text)" },
+  { tag: tags.contentSeparator, color: "var(--color-obsidian-muted-text)" },
+]));
+
+// --- CM6 Live Preview Decoration Builder ---
+
+function buildLiveDecorations(state: EditorState, onWikilinkClick: (t: string) => void): DecorationSet {
+  const decs: { from: number; to: number; deco: Decoration }[] = [];
+  const cursor = state.selection.main.head;
+  const anchorLine = state.doc.lineAt(state.selection.main.anchor).number;
+  const headLine = state.doc.lineAt(cursor).number;
+  const activeLine1 = Math.min(anchorLine, headLine);
+  const activeLine2 = Math.max(anchorLine, headLine);
+
   let inCodeBlock = false;
 
-  const flush = (type: "text" | "code") => {
-    if (current.length > 0) {
-      blocks.push({ text: current.join("\n"), type, startLine: currentStart });
-      current = [];
-    }
-  };
+  for (let i = 1; i <= state.doc.lines; i++) {
+    const line = state.doc.line(i);
+    const text = line.text;
+    const trimmed = text.trim();
 
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (line.trimStart().startsWith("```")) {
-      if (inCodeBlock) {
-        current.push(line);
-        flush("code");
-        inCodeBlock = false;
-      } else {
-        flush("text");
-        currentStart = i;
-        current.push(line);
+    // Track fenced code blocks
+    if (trimmed.startsWith("```")) {
+      if (!inCodeBlock) {
         inCodeBlock = true;
+        if (i < activeLine1 || i > activeLine2) {
+          decs.push({ from: line.from, to: line.from, deco: Decoration.line({ class: "cm-codeblock-line" }) });
+        }
+        continue;
+      } else {
+        inCodeBlock = false;
+        if (i < activeLine1 || i > activeLine2) {
+          decs.push({ from: line.from, to: line.from, deco: Decoration.line({ class: "cm-codeblock-line" }) });
+        }
+        continue;
       }
-    } else if (inCodeBlock) {
-      current.push(line);
-    } else if (line.trim() === "") {
-      flush("text");
-      blocks.push({ text: "", type: "empty", startLine: i });
-    } else {
-      if (current.length === 0) currentStart = i;
-      current.push(line);
+    }
+    if (inCodeBlock) {
+      if (i < activeLine1 || i > activeLine2) {
+        decs.push({ from: line.from, to: line.from, deco: Decoration.line({ class: "cm-codeblock-line" }) });
+      }
+      continue;
+    }
+
+    // Skip active lines — they show raw markdown
+    if (i >= activeLine1 && i <= activeLine2) continue;
+
+    // === BLOCK-LEVEL DECORATIONS ===
+
+    // Horizontal Rule
+    if (/^(---+|___+|\*\*\*+)\s*$/.test(trimmed)) {
+      decs.push({ from: line.from, to: line.to, deco: Decoration.replace({ widget: new HRWidget() }) });
+      continue;
+    }
+
+    // Headings: hide # marks, apply heading line style
+    const headingMatch = text.match(/^(#{1,6})\s/);
+    if (headingMatch) {
+      const level = headingMatch[1].length;
+      decs.push({ from: line.from, to: line.from, deco: Decoration.line({ class: `cm-heading-${level}` }) });
+      decs.push({ from: line.from, to: line.from + headingMatch[0].length, deco: Decoration.replace({}) });
+    }
+
+    // Blockquote: hide > marker, style line
+    const quoteMatch = text.match(/^(\s*>+\s?)/);
+    if (quoteMatch && !headingMatch) {
+      decs.push({ from: line.from, to: line.from, deco: Decoration.line({ class: "cm-blockquote-line" }) });
+      decs.push({ from: line.from, to: line.from + quoteMatch[0].length, deco: Decoration.replace({}) });
+    }
+
+    // Task checkbox: - [ ] or - [x]
+    const taskMatch = text.match(/^(\s*[-*+])\s\[([ x])\]\s/);
+    if (taskMatch) {
+      const checked = taskMatch[2] === "x";
+      const fullPrefixLen = taskMatch[0].length;
+      decs.push({
+        from: line.from,
+        to: line.from + fullPrefixLen,
+        deco: Decoration.replace({ widget: new CheckboxWidget(checked) }),
+      });
+    }
+
+    // List bullet/number (non-task): hide marker, show bullet
+    if (!taskMatch) {
+      const listMatch = text.match(/^(\s*)([-*+])\s/);
+      if (listMatch) {
+        decs.push({
+          from: line.from + listMatch[1].length,
+          to: line.from + listMatch[0].length,
+          deco: Decoration.replace({ widget: new ListBulletWidget() }),
+        });
+      }
+    }
+
+    // === INLINE DECORATIONS ===
+    // Process inline patterns only for the non-prefix portion of the line
+    // We need to be careful about overlapping decorations
+
+    const inlineRanges: { from: number; to: number }[] = [];
+    const addInline = (from: number, to: number, deco: Decoration) => {
+      // Check for overlap with existing ranges
+      for (const r of inlineRanges) {
+        if (from < r.to && to > r.from) return; // overlaps, skip
+      }
+      inlineRanges.push({ from, to });
+      decs.push({ from, to, deco });
+    };
+
+    // Wikilinks: [[title]] or [[title|display]]
+    const wikiRe = /\[\[([^\]]+)\]\]/g;
+    let wm;
+    while ((wm = wikiRe.exec(text)) !== null) {
+      const f = line.from + wm.index;
+      const t = f + wm[0].length;
+      const parts = wm[1].split("|");
+      const title = parts[0].trim();
+      const display = parts.length > 1 ? parts[1].trim() : title;
+      // Replace entire [[...]] with clickable widget
+      for (const r of inlineRanges) { if (f < r.to && t > r.from) continue; }
+      inlineRanges.push({ from: f, to: t });
+      decs.push({ from: f, to: t, deco: Decoration.replace({ widget: new WikilinkWidget(title, display, onWikilinkClick) }) });
+    }
+
+    // Bold: **text**
+    const boldRe = /\*\*(.+?)\*\*/g;
+    let bm;
+    while ((bm = boldRe.exec(text)) !== null) {
+      const f = line.from + bm.index;
+      const t = f + bm[0].length;
+      addInline(f, f + 2, Decoration.replace({})); // hide opening **
+      addInline(t - 2, t, Decoration.replace({})); // hide closing **
+      addInline(f + 2, t - 2, Decoration.mark({ class: "cm-lp-strong" }));
+    }
+
+    // Italic: *text* (but not **)
+    const italicRe = /(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g;
+    let im;
+    while ((im = italicRe.exec(text)) !== null) {
+      const f = line.from + im.index;
+      const t = f + im[0].length;
+      addInline(f, f + 1, Decoration.replace({}));
+      addInline(t - 1, t, Decoration.replace({}));
+      addInline(f + 1, t - 1, Decoration.mark({ class: "cm-lp-em" }));
+    }
+
+    // Strikethrough: ~~text~~
+    const strikeRe = /~~(.+?)~~/g;
+    let sm;
+    while ((sm = strikeRe.exec(text)) !== null) {
+      const f = line.from + sm.index;
+      const t = f + sm[0].length;
+      addInline(f, f + 2, Decoration.replace({}));
+      addInline(t - 2, t, Decoration.replace({}));
+      addInline(f + 2, t - 2, Decoration.mark({ class: "cm-lp-strike" }));
+    }
+
+    // Inline code: `code`
+    const codeRe = /`([^`]+)`/g;
+    let cm;
+    while ((cm = codeRe.exec(text)) !== null) {
+      const f = line.from + cm.index;
+      const t = f + cm[0].length;
+      addInline(f, f + 1, Decoration.replace({}));
+      addInline(t - 1, t, Decoration.replace({}));
+      addInline(f + 1, t - 1, Decoration.mark({ class: "cm-lp-code" }));
+    }
+
+    // Highlight: ==text==
+    const hlRe = /==(.+?)==/g;
+    let hm;
+    while ((hm = hlRe.exec(text)) !== null) {
+      const f = line.from + hm.index;
+      const t = f + hm[0].length;
+      addInline(f, f + 2, Decoration.replace({}));
+      addInline(t - 2, t, Decoration.replace({}));
+      addInline(f + 2, t - 2, Decoration.mark({ class: "cm-lp-highlight" }));
+    }
+
+    // Markdown links: [text](url) — but not images ![alt](url) and not wiki [[
+    const linkRe = /(?<!!)\[([^\]]+)\]\(([^)]+)\)/g;
+    let lm;
+    while ((lm = linkRe.exec(text)) !== null) {
+      const f = line.from + lm.index;
+      const t = f + lm[0].length;
+      const textEnd = f + 1 + lm[1].length;
+      addInline(f, f + 1, Decoration.replace({}));             // hide [
+      addInline(f + 1, textEnd, Decoration.mark({ class: "cm-lp-link" })); // style text
+      addInline(textEnd, t, Decoration.replace({}));             // hide ](url)
     }
   }
-  flush(inCodeBlock ? "code" : "text");
-  return blocks;
+
+  // Sort decorations: line decorations first (they have from===to at line start),
+  // then by position. CM6 requires sorted, non-overlapping decorations.
+  decs.sort((a, b) => a.from - b.from || a.to - b.to);
+
+  try {
+    return Decoration.set(decs.map(d => d.deco.range(d.from, d.to)), true);
+  } catch {
+    return Decoration.none;
+  }
 }
+
+// Small widget for list bullets
+class ListBulletWidget extends WidgetType {
+  toDOM() {
+    const span = document.createElement("span");
+    span.textContent = "• ";
+    span.style.color = "var(--color-obsidian-muted-text)";
+    return span;
+  }
+  eq() { return true; }
+}
+
+// --- CM6 Smart-Enter for list continuation ---
+
+function smartListEnter(view: EditorView): boolean {
+  const { state } = view;
+  const { head } = state.selection.main;
+  const line = state.doc.lineAt(head);
+  const text = line.text;
+
+  const taskMatch = text.match(/^(\s*)([-*+])\s\[([ x])\]\s(.*)$/);
+  const bulletMatch = text.match(/^(\s*)([-*+])\s(.*)$/);
+  const numberedMatch = text.match(/^(\s*)(\d+)\.\s(.*)$/);
+
+  if (taskMatch) {
+    if (taskMatch[4] === "" && head >= line.to - taskMatch[4].length) {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+      return true;
+    }
+    const prefix = `${taskMatch[1]}${taskMatch[2]} [ ] `;
+    view.dispatch({
+      changes: { from: head, insert: "\n" + prefix },
+      selection: { anchor: head + 1 + prefix.length },
+    });
+    return true;
+  }
+
+  if (bulletMatch && !taskMatch) {
+    if (bulletMatch[3] === "" && head >= line.to - bulletMatch[3].length) {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+      return true;
+    }
+    const prefix = `${bulletMatch[1]}${bulletMatch[2]} `;
+    view.dispatch({
+      changes: { from: head, insert: "\n" + prefix },
+      selection: { anchor: head + 1 + prefix.length },
+    });
+    return true;
+  }
+
+  if (numberedMatch) {
+    if (numberedMatch[3] === "" && head >= line.to - numberedMatch[3].length) {
+      view.dispatch({ changes: { from: line.from, to: line.to, insert: "" } });
+      return true;
+    }
+    const nextNum = parseInt(numberedMatch[2]) + 1;
+    const prefix = `${numberedMatch[1]}${nextNum}. `;
+    view.dispatch({
+      changes: { from: head, insert: "\n" + prefix },
+      selection: { anchor: head + 1 + prefix.length },
+    });
+    return true;
+  }
+
+  return false;
+}
+
+// --- CM6 Wikilink autocompletion ---
+
+function wikilinkCompletionSource(notes: Note[]): CompletionSource {
+  return (context: CompletionContext) => {
+    const before = context.matchBefore(/\[\[([^\]]*)$/);
+    if (!before) return null;
+    const filter = before.text.slice(2);
+    return {
+      from: before.from + 2,
+      to: context.pos,
+      options: notes
+        .filter(n => !n.trashed && n.title.toLowerCase().includes(filter.toLowerCase()))
+        .slice(0, 20)
+        .map(n => ({
+          label: n.title,
+          apply: (view: EditorView, _c: unknown, from: number, to: number) => {
+            view.dispatch({ changes: { from, to, insert: `${n.title}]]` } });
+          },
+        })),
+    };
+  };
+}
+
+// --- CM6 create extensions factory ---
+
+function createLivePreviewExtensions(
+  onContentChange: (content: string) => void,
+  onWikilinkClick: (title: string) => void,
+  notes: Note[],
+  fontSize: number,
+  spellCheck: boolean,
+): Extension[] {
+  const liveDecoField = StateField.define<DecorationSet>({
+    create(state) { return buildLiveDecorations(state, onWikilinkClick); },
+    update(decos, tr) {
+      if (tr.docChanged || tr.selection) {
+        return buildLiveDecorations(tr.state, onWikilinkClick);
+      }
+      return decos;
+    },
+    provide: f => EditorView.decorations.from(f),
+  });
+
+  return [
+    markdown({ base: markdownLanguage, codeLanguages: languages }),
+    liveDecoField,
+    livePreviewTheme,
+    obsidianHighlightStyle,
+    history(),
+    closeBrackets(),
+    autocompletion({ override: [wikilinkCompletionSource(notes)] }),
+    keymap.of([
+      { key: "Enter", run: smartListEnter },
+      ...closeBracketsKeymap,
+      ...historyKeymap,
+      ...defaultKeymap,
+    ]),
+    EditorView.lineWrapping,
+    EditorState.allowMultipleSelections.of(false),
+    EditorView.contentAttributes.of({ spellcheck: spellCheck ? "true" : "false" }),
+    EditorView.updateListener.of((update: ViewUpdate) => {
+      if (update.docChanged) {
+        onContentChange(update.state.doc.toString());
+      }
+    }),
+    EditorView.theme({ "&": { fontSize: `${fontSize}px` } }),
+  ];
+}
+
+// --- LivePreviewPane Component ---
 
 function LivePreviewPane({
   note,
@@ -2419,171 +2838,71 @@ function LivePreviewPane({
   onCloseAutocomplete?: () => void;
   installedPluginIds?: string[];
 }) {
-  const [activeBlockIdx, setActiveBlockIdx] = useState<number | null>(null);
+  const editorContainerRef = useRef<HTMLDivElement>(null);
+  const viewRef = useRef<EditorView | null>(null);
+  const contentRef = useRef(note.content);
+  const noteIdRef = useRef(note.id);
+
   const [addingTag, setAddingTag] = useState(false);
   const [newTagValue, setNewTagValue] = useState("");
-  const blockTextareaRef = useRef<HTMLTextAreaElement>(null);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const fontSize = preferences?.fontSize ?? 16;
   const readableLength = preferences?.readableLineLength ?? true;
   const spellCheckEnabled = preferences?.spellCheck ?? false;
 
-  const blocks = parseLiveBlocks(note.content);
+  const onContentChangeRef = useRef(onContentChange);
+  onContentChangeRef.current = onContentChange;
+  const onWikilinkClickRef = useRef(onWikilinkClick);
+  onWikilinkClickRef.current = onWikilinkClick;
+  const notesRef = useRef(notes);
+  notesRef.current = notes;
 
-  // Auto-resize textarea when active
+  // Create / destroy CM6 editor when the note changes
   useEffect(() => {
-    if (blockTextareaRef.current && activeBlockIdx !== null) {
-      const ta = blockTextareaRef.current;
-      ta.style.height = "auto";
-      ta.style.height = `${ta.scrollHeight}px`;
-      ta.focus();
-    }
-  }, [activeBlockIdx]);
+    const container = editorContainerRef.current;
+    if (!container) return;
 
-  const updateBlock = (blockIdx: number, newText: string) => {
-    const newBlocks = blocks.map((b, i) => (i === blockIdx ? { ...b, text: newText } : b));
-    const newContent = newBlocks.map((b) => b.text).join("\n");
-    onContentChange(newContent);
-  };
+    // Stable callbacks that read from refs
+    const stableContentChange = (c: string) => {
+      contentRef.current = c;
+      onContentChangeRef.current(c);
+    };
+    const stableWikilinkClick = (t: string) => onWikilinkClickRef.current(t);
 
-  const handleBlockClick = (idx: number) => {
-    if (blocks[idx].type === "empty") return;
-    setActiveBlockIdx(idx);
-  };
+    const extensions = createLivePreviewExtensions(
+      stableContentChange,
+      stableWikilinkClick,
+      notesRef.current,
+      fontSize,
+      spellCheckEnabled,
+    );
 
-  const handleBlockBlur = () => {
-    // Small delay to allow clicking between blocks without flicker
-    setTimeout(() => {
-      if (containerRef.current && !containerRef.current.contains(document.activeElement)) {
-        setActiveBlockIdx(null);
-      }
-    }, 100);
-  };
+    const state = EditorState.create({ doc: note.content, extensions });
+    const view = new EditorView({ state, parent: container });
+    viewRef.current = view;
+    contentRef.current = note.content;
+    noteIdRef.current = note.id;
 
-  const handleBlockKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>, blockIdx: number) => {
-    const ta = e.currentTarget;
-    const { selectionStart, selectionEnd, value } = ta;
+    return () => {
+      view.destroy();
+      viewRef.current = null;
+    };
+    // Recreate editor when note ID changes
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [note.id]);
 
-    // Enter at end of block — create new block below
-    if (e.key === "Enter" && selectionStart === value.length && !e.shiftKey) {
-      // Smart list continuation
-      const lines = value.split("\n");
-      const lastLine = lines[lines.length - 1];
-      const bulletMatch = lastLine.match(/^(\s*)([-*+])\s(.*)$/);
-      const numberedMatch = lastLine.match(/^(\s*)(\d+)\.\s(.*)$/);
-      const taskMatch = lastLine.match(/^(\s*)([-*+])\s\[[ x]\]\s(.*)$/);
-
-      if (taskMatch || bulletMatch || numberedMatch) {
-        // Let the textarea handle list continuation naturally
-        return;
-      }
-
-      // At end of block, split to create new empty block below
-      e.preventDefault();
-      const contentLines = note.content.split("\n");
-      const block = blocks[blockIdx];
-      const insertLineIdx = block.startLine + block.text.split("\n").length;
-      contentLines.splice(insertLineIdx, 0, "", "");
-      onContentChange(contentLines.join("\n"));
-      // Move to next text block
-      setTimeout(() => setActiveBlockIdx(blockIdx + 2), 50);
-      return;
-    }
-
-    // Backspace at start of block — merge with previous
-    if (e.key === "Backspace" && selectionStart === 0 && selectionEnd === 0 && blockIdx > 0) {
-      e.preventDefault();
-      const prevBlockIdx = blockIdx - 1;
-      // If previous block is empty, remove it
-      if (blocks[prevBlockIdx].type === "empty") {
-        const contentLines = note.content.split("\n");
-        contentLines.splice(blocks[prevBlockIdx].startLine, 1);
-        onContentChange(contentLines.join("\n"));
-        setActiveBlockIdx(blockIdx - 1);
-        return;
-      }
-      // Merge with previous text block
-      const prevText = blocks[prevBlockIdx].text;
-      const mergedText = prevText + "\n" + value;
-      const contentLines = note.content.split("\n");
-      const prevStart = blocks[prevBlockIdx].startLine;
-      const currentEnd = blocks[blockIdx].startLine + blocks[blockIdx].text.split("\n").length;
-      contentLines.splice(prevStart, currentEnd - prevStart, ...mergedText.split("\n"));
-      onContentChange(contentLines.join("\n"));
-      setActiveBlockIdx(prevBlockIdx);
-      return;
-    }
-
-    // ArrowUp at first line of block — move to previous block
-    if (e.key === "ArrowUp" && selectionStart === selectionEnd) {
-      const linesBefore = value.substring(0, selectionStart).split("\n");
-      if (linesBefore.length === 1) {
-        e.preventDefault();
-        for (let i = blockIdx - 1; i >= 0; i--) {
-          if (blocks[i].type !== "empty") {
-            setActiveBlockIdx(i);
-            break;
-          }
-        }
-      }
-    }
-
-    // ArrowDown at last line of block — move to next block
-    if (e.key === "ArrowDown" && selectionStart === selectionEnd) {
-      const linesAfter = value.substring(selectionStart).split("\n");
-      if (linesAfter.length === 1) {
-        e.preventDefault();
-        for (let i = blockIdx + 1; i < blocks.length; i++) {
-          if (blocks[i].type !== "empty") {
-            setActiveBlockIdx(i);
-            break;
-          }
-        }
-      }
-    }
-
-    // Auto-pair brackets
-    const pairs: Record<string, string> = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
-    if (pairs[e.key]) {
-      e.preventDefault();
-      const before = value.substring(0, selectionStart);
-      const after = value.substring(selectionEnd);
-      const selected = value.substring(selectionStart, selectionEnd);
-      const newValue = before + e.key + selected + pairs[e.key] + after;
-      updateBlock(blockIdx, newValue);
-      setTimeout(() => ta.setSelectionRange(selectionStart + 1, selectionStart + 1 + selected.length), 0);
-    }
-  };
-
-  const handleBlockInput = (e: React.ChangeEvent<HTMLTextAreaElement>, blockIdx: number) => {
-    const ta = e.target;
-    const newValue = ta.value;
-    updateBlock(blockIdx, newValue);
-
-    // Auto-resize
-    ta.style.height = "auto";
-    ta.style.height = `${ta.scrollHeight}px`;
-
-    // Link autocomplete
-    const { selectionStart, value } = ta;
-    const beforeCursor = value.substring(0, selectionStart);
-    const lastOpen = beforeCursor.lastIndexOf("[[");
-    const lastClose = beforeCursor.lastIndexOf("]]");
-    if (lastOpen > lastClose && lastOpen !== -1) {
-      const filter = beforeCursor.substring(lastOpen + 2);
-      if (!filter.includes("\n") && filter.length < 50) {
-        const rect = ta.getBoundingClientRect();
-        const linesBefore = beforeCursor.split("\n").length;
-        onLinkAutocomplete?.({ filter, position: { top: rect.top + linesBefore * 24, left: rect.left + 32 } });
-        return;
-      }
-    }
-    onCloseAutocomplete?.();
-  };
+  // Sync external content changes (e.g. sync from Firestore)
+  useEffect(() => {
+    const view = viewRef.current;
+    if (!view || noteIdRef.current !== note.id) return;
+    if (contentRef.current === note.content) return;
+    contentRef.current = note.content;
+    const currentLen = view.state.doc.length;
+    view.dispatch({ changes: { from: 0, to: currentLen, insert: note.content } });
+  }, [note.content, note.id]);
 
   return (
-    <div className="flex-1 overflow-y-auto" ref={containerRef}>
+    <div className="flex-1 overflow-y-auto">
       <div className="editor-content-area mx-auto px-10 pt-10 pb-20 md:pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
         {/* Title */}
         <input
@@ -2592,7 +2911,6 @@ function LivePreviewPane({
           value={note.title}
           onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled"
-          onClick={() => setActiveBlockIdx(null)}
         />
         {/* Tags */}
         <div className="flex items-center gap-2 mb-4 flex-wrap">
@@ -2637,90 +2955,8 @@ function LivePreviewPane({
         </div>
         {/* Frontmatter */}
         <FrontmatterEditor content={note.content} onContentChange={onContentChange} />
-        {/* Blocks */}
-        <div className="live-preview-blocks">
-          {blocks.map((block, idx) => {
-            if (block.type === "empty") {
-              return (
-                <div
-                  key={`empty-${idx}`}
-                  className="h-[1.8em] cursor-text"
-                  onClick={() => {
-                    // clicking empty line activates next text block or creates one
-                    for (let i = idx + 1; i < blocks.length; i++) {
-                      if (blocks[i].type !== "empty") { setActiveBlockIdx(i); return; }
-                    }
-                  }}
-                />
-              );
-            }
-
-            if (activeBlockIdx === idx) {
-              // Active block — show raw markdown textarea
-              return (
-                <div key={`edit-${idx}`} className="live-block-editing">
-                  <textarea
-                    ref={blockTextareaRef}
-                    className="w-full bg-transparent outline-none resize-none"
-                    style={{
-                      color: "var(--color-obsidian-text)",
-                      fontSize,
-                      lineHeight: 1.8,
-                      minHeight: "1.8em",
-                      caretColor: "var(--color-obsidian-accent-soft)",
-                      fontFamily: "var(--font-mono)",
-                      background: "rgba(124,106,247,0.04)",
-                      borderRadius: 6,
-                      padding: "4px 8px",
-                      margin: "-4px -8px",
-                      borderLeft: "2px solid var(--color-obsidian-accent)",
-                    }}
-                    value={block.text}
-                    onChange={(e) => handleBlockInput(e, idx)}
-                    onKeyDown={(e) => handleBlockKeyDown(e, idx)}
-                    onBlur={handleBlockBlur}
-                    spellCheck={spellCheckEnabled}
-                  />
-                </div>
-              );
-            }
-
-            // Rendered block — show markdown output
-            return (
-              <div
-                key={`render-${idx}`}
-                className="live-block-rendered cursor-text rounded transition-colors hover:bg-white/[0.02]"
-                style={{ padding: "0 0", minHeight: "1em" }}
-                onClick={() => handleBlockClick(idx)}
-              >
-                <MarkdownRenderer
-                  content={block.text}
-                  notes={notes}
-                  onWikilinkClick={onWikilinkClick}
-                  onHoverLink={onHoverLink}
-                  onHoverEnd={onHoverEnd}
-                  onToggleCheckbox={(lineIndex) => {
-                    onToggleCheckbox?.(block.startLine + lineIndex);
-                  }}
-                />
-              </div>
-            );
-          })}
-          {/* Click area at bottom to add content */}
-          <div
-            className="cursor-text"
-            style={{ minHeight: "30vh" }}
-            onClick={() => {
-              // Activate last block or create new content
-              if (blocks.length > 0) {
-                const lastTextBlock = [...blocks].reverse().find((b) => b.type !== "empty");
-                if (lastTextBlock) {
-                  setActiveBlockIdx(blocks.indexOf(lastTextBlock));
-                }
-              }
-            }}
-          />
-        </div>
+        {/* CM6 Editor */}
+        <div ref={editorContainerRef} className="cm-live-preview-container" />
       </div>
     </div>
   );
