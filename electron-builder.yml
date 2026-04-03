@@ -74,3 +74,18 @@ publish:
   owner: Dev-Lune
   repo: voltex-notes
   releaseType: release
+
+releaseInfo:
+  releaseNotes: |
+    ## What's New in v1.1.0
+
+    ### Features
+    - Folder management — right-click folders to rename or delete them
+    - Create Vault from Settings (no longer only in Welcome screen)
+    - Google Sign-In now opens in your system browser (Electron)
+
+    ### Fixes
+    - Fixed file size inconsistency between root and folder notes in sidebar
+    - Removed inaccessible default folders (Templates, Marketplace Data)
+    - Mobile sidebar now has folder create/delete/rename support
+    - Added rmdir and renameDir support for Electron vault operations
