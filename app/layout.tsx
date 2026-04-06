@@ -41,9 +41,8 @@ export const metadata: Metadata = {
   creator: 'DevLune Studios',
   publisher: 'DevLune Studios',
 
-  // ─── Canonical & Alternates ─────────────────────────────
+  // ─── Canonical Base ────────────────────────────────────
   metadataBase: new URL(SITE_URL),
-  alternates: { canonical: '/' },
 
   // ─── Open Graph ─────────────────────────────────────────
   openGraph: {
