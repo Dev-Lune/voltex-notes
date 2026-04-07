@@ -34,6 +34,12 @@ export interface Folder {
   parentId: string | null;
   synced?: boolean;
 }
+/** A vault is a named container for notes and folders (web version). */
+export interface Vault {
+  id: string;
+  name: string;
+  createdAt: string;
+}
 export interface Plugin {
   id: string;
   name: string;
@@ -557,6 +563,8 @@ export interface AppState {
   slidingPanesEnabled?: boolean;
   /** Folder IDs that have been synced to cloud */
   syncedFolderIds?: string[];
+  /** Active vault ID (web) — null means default vault */
+  activeVaultId?: string;
 }
 // ─── Editor Preferences ──────────────────────────────────────────────────────
 export interface EditorPreferences {

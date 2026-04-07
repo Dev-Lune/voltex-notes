@@ -6,11 +6,12 @@ import {
   ChevronDown, Folder, Star, MoreHorizontal, Trash2, Edit3,
   FolderPlus, Cloud, CloudOff, RefreshCw, Store, Pencil,
   CalendarDays, LayoutGrid, FileCode2, X, CheckSquare, Square,
-  Pin, ArrowUpDown, RotateCcw, ArrowDownAZ, ArrowUpAZ, Clock
+  Pin, ArrowUpDown, RotateCcw, ArrowDownAZ, ArrowUpAZ, Clock,
+  FolderOpen, ChevronUp, Check
 } from "lucide-react";
 import {
   Note, Folder as FolderType, AppState, NoteType,
-  getAllTags
+  getAllTags, Vault
 } from "./data";
 
 interface SidebarProps {
@@ -29,6 +30,13 @@ interface SidebarProps {
   onRestoreNote?: (id: string) => void;
   onTogglePin?: (id: string) => void;
   vaultPath?: string;
+  /** Imperative handle: parent can trigger select-all */
+  selectAllRef?: React.RefObject<{ selectAll: () => void } | null>;
+  /** Web vault management */
+  webVaults?: Vault[];
+  activeWebVaultId?: string | null;
+  onCreateWebVault?: (name: string) => void;
+  onSwitchWebVault?: (vaultId: string) => void;
 }
 
 type SortMode = "modified" | "created" | "title-asc" | "title-desc";
@@ -598,6 +606,11 @@ export default function Sidebar({
   onRestoreNote,
   onTogglePin,
   vaultPath,
+  selectAllRef,
+  webVaults,
+  activeWebVaultId,
+  onCreateWebVault,
+  onSwitchWebVault,
 }: SidebarProps) {
   const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders, syncedFolderIds } = state;
   // Filter out trashed notes for normal views
@@ -618,7 +631,21 @@ export default function Sidebar({
   });
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [rootDragOver, setRootDragOver] = useState(false);
+  const [vaultPickerOpen, setVaultPickerOpen] = useState(false);
+  const [newVaultName, setNewVaultName] = useState("");
   const allTags = getAllTags(notes);
+
+  // Expose selectAll to parent via ref
+  React.useEffect(() => {
+    if (selectAllRef && "current" in selectAllRef) {
+      (selectAllRef as React.MutableRefObject<{ selectAll: () => void } | null>).current = {
+        selectAll: () => {
+          setSelectionMode(true);
+          setSelectedIds(new Set(notes.map((n) => n.id)));
+        },
+      };
+    }
+  }, [selectAllRef, notes]);
 
   // ── Root-level drop zone: move notes out of folders back to root ──
   const handleRootDragOver = (e: React.DragEvent) => {
@@ -857,18 +884,93 @@ export default function Sidebar({
           className="flex items-center justify-between px-3 py-2 shrink-0"
           style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
         >
-          <span
-            className="text-xs font-semibold uppercase tracking-wider"
-            style={{ color: "var(--color-obsidian-muted-text)" }}
-          >
-            {sidebarView === "files" ? (vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Explorer" : "Explorer")
-              : sidebarView === "search" ? "Search"
-              : sidebarView === "tags" ? "Tags"
-              : sidebarView === "bookmarks" ? "Bookmarks"
-              : sidebarView === "trash" ? "Trash"
-              : sidebarView === "marketplace" ? "Marketplace"
-              : "Graph"}
-          </span>
+          {/* Vault picker (web) or title */}
+          {sidebarView === "files" && webVaults && webVaults.length > 0 && onSwitchWebVault ? (
+            <div className="relative">
+              <button
+                onClick={() => setVaultPickerOpen((v) => !v)}
+                className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider hover:opacity-80 transition-opacity"
+                style={{ color: "var(--color-obsidian-muted-text)" }}
+              >
+                <FolderOpen size={12} />
+                {webVaults.find(v => v.id === activeWebVaultId)?.name || "Select Vault"}
+                {vaultPickerOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              </button>
+              {vaultPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-[999]" onClick={() => { setVaultPickerOpen(false); setNewVaultName(""); }} />
+                  <div
+                    className="absolute left-0 top-full mt-1 z-[1000] w-52 rounded-lg overflow-hidden shadow-xl"
+                    style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+                  >
+                    <div className="px-2 py-1.5" style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+                      <span className="text-xs font-medium" style={{ color: "var(--color-obsidian-muted-text)" }}>Vaults</span>
+                    </div>
+                    {webVaults.map((v) => (
+                      <button
+                        key={v.id}
+                        onClick={() => { onSwitchWebVault(v.id); setVaultPickerOpen(false); }}
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        style={{
+                          color: v.id === activeWebVaultId ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
+                          background: v.id === activeWebVaultId ? "rgba(124,106,247,0.1)" : "transparent",
+                        }}
+                      >
+                        <FolderOpen size={11} />
+                        {v.name}
+                        {v.id === activeWebVaultId && <Check size={11} style={{ marginLeft: "auto", opacity: 0.7 }} />}
+                      </button>
+                    ))}
+                    <div style={{ borderTop: "1px solid var(--color-obsidian-border)" }}>
+                      <div className="flex items-center gap-1 px-2 py-1.5">
+                        <input
+                          value={newVaultName}
+                          onChange={(e) => setNewVaultName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && newVaultName.trim() && onCreateWebVault) {
+                              onCreateWebVault(newVaultName.trim());
+                              setNewVaultName("");
+                              setVaultPickerOpen(false);
+                            }
+                            if (e.key === "Escape") { setNewVaultName(""); setVaultPickerOpen(false); }
+                          }}
+                          placeholder="New vault name…"
+                          className="flex-1 bg-transparent outline-none text-xs"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                        />
+                        <button
+                          onClick={() => {
+                            if (newVaultName.trim() && onCreateWebVault) {
+                              onCreateWebVault(newVaultName.trim());
+                              setNewVaultName("");
+                              setVaultPickerOpen(false);
+                            }
+                          }}
+                          className="p-1 rounded hover:bg-white/10"
+                          style={{ color: "var(--color-obsidian-accent)" }}
+                        >
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ) : (
+            <span
+              className="text-xs font-semibold uppercase tracking-wider"
+              style={{ color: "var(--color-obsidian-muted-text)" }}
+            >
+              {sidebarView === "files" ? (vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Explorer" : "Explorer")
+                : sidebarView === "search" ? "Search"
+                : sidebarView === "tags" ? "Tags"
+                : sidebarView === "bookmarks" ? "Bookmarks"
+                : sidebarView === "trash" ? "Trash"
+                : sidebarView === "marketplace" ? "Marketplace"
+                : "Graph"}
+            </span>
+          )}
           <div className="flex items-center gap-1">
             {sidebarView === "files" && (
               <>

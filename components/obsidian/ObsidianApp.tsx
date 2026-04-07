@@ -3,7 +3,8 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   AppState, Note, Folder, SAMPLE_NOTES, SAMPLE_FOLDERS,
-  countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme
+  countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme,
+  Vault
 } from "./data";
 import TitleBar from "./TitleBar";
 import Sidebar from "./Sidebar";
@@ -129,10 +130,130 @@ export default function ObsidianApp() {
   const fileWatcherCleanupRef = useRef<(() => void) | null>(null);
   const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(new Set());
   const [syncPromptVisible, setSyncPromptVisible] = useState(false);
+  const sidebarSelectAllRef = useRef<{ selectAll: () => void } | null>(null);
+
+  // ── Web Vault Management ───────────────────────────────────────────────────
+  const [webVaults, setWebVaults] = useState<Vault[]>(() => {
+    if (typeof window === "undefined" || isElectron()) return [];
+    try {
+      const saved = localStorage.getItem("voltex-vaults");
+      return saved ? JSON.parse(saved) : [];
+    } catch { return []; }
+  });
+  const [activeWebVaultId, setActiveWebVaultId] = useState<string | null>(() => {
+    if (typeof window === "undefined" || isElectron()) return null;
+    try {
+      return localStorage.getItem("voltex-active-vault-id") || null;
+    } catch { return null; }
+  });
 
   const patch = useCallback((p: Partial<AppState>) => {
     setState((prev) => ({ ...prev, ...p }));
   }, []);
+
+  // ── Web vault helpers ───────────────────────────────────────────────────────
+  const saveWebVaultData = useCallback((vaultId: string, notes: Note[], folders: Folder[]) => {
+    if (isElectron()) return;
+    try {
+      localStorage.setItem(`voltex-vault-${vaultId}-notes`, JSON.stringify(notes));
+      localStorage.setItem(`voltex-vault-${vaultId}-folders`, JSON.stringify(folders));
+    } catch { /* storage full */ }
+  }, []);
+
+  const loadWebVaultData = useCallback((vaultId: string): { notes: Note[]; folders: Folder[] } | null => {
+    if (isElectron()) return null;
+    try {
+      const notesRaw = localStorage.getItem(`voltex-vault-${vaultId}-notes`);
+      const foldersRaw = localStorage.getItem(`voltex-vault-${vaultId}-folders`);
+      if (!notesRaw) return null;
+      return {
+        notes: JSON.parse(notesRaw),
+        folders: foldersRaw ? JSON.parse(foldersRaw) : [{ id: "root", name: "Vault", parentId: null }],
+      };
+    } catch { return null; }
+  }, []);
+
+  const createWebVault = useCallback((name: string) => {
+    if (isElectron()) return;
+    const id = `vault-${Date.now()}`;
+    const newVault: Vault = { id, name, createdAt: new Date().toISOString() };
+    const blankNote: Note = {
+      id: `note-${Date.now()}`,
+      title: "Untitled",
+      content: `# ${name}\n\nStart writing…`,
+      tags: [],
+      folder: "root",
+      createdAt: new Date().toISOString().split("T")[0],
+      updatedAt: new Date().toISOString().split("T")[0],
+      starred: false,
+      wordCount: 0,
+      type: "markdown",
+    };
+    const folders: Folder[] = [{ id: "root", name: "Vault", parentId: null }];
+    saveWebVaultData(id, [blankNote], folders);
+
+    const updated = [...webVaults, newVault];
+    setWebVaults(updated);
+    try { localStorage.setItem("voltex-vaults", JSON.stringify(updated)); } catch { /* ignore */ }
+
+    // Switch to the new vault
+    switchWebVault(id, updated);
+  }, [webVaults, saveWebVaultData]);
+
+  const switchWebVault = useCallback((vaultId: string, vaultsList?: Vault[]) => {
+    if (isElectron()) return;
+    // Save current vault data before switching
+    if (activeWebVaultId) {
+      saveWebVaultData(activeWebVaultId, state.notes, state.folders);
+    }
+
+    const data = loadWebVaultData(vaultId);
+    const vaults = vaultsList || webVaults;
+    const vault = vaults.find(v => v.id === vaultId);
+    setActiveWebVaultId(vaultId);
+    try { localStorage.setItem("voltex-active-vault-id", vaultId); } catch { /* ignore */ }
+
+    if (data && data.notes.length > 0) {
+      setState((prev) => ({
+        ...prev,
+        notes: data.notes,
+        folders: data.folders,
+        activeNoteId: data.notes[0].id,
+        openNoteIds: [data.notes[0].id],
+        activeVaultId: vaultId,
+      }));
+    } else {
+      const blankNote: Note = {
+        id: `note-${Date.now()}`,
+        title: "Untitled",
+        content: `# ${vault?.name || "Vault"}\n\nStart writing…`,
+        tags: [],
+        folder: "root",
+        createdAt: new Date().toISOString().split("T")[0],
+        updatedAt: new Date().toISOString().split("T")[0],
+        starred: false,
+        wordCount: 0,
+        type: "markdown",
+      };
+      setState((prev) => ({
+        ...prev,
+        notes: [blankNote],
+        folders: [{ id: "root", name: "Vault", parentId: null }],
+        activeNoteId: blankNote.id,
+        openNoteIds: [blankNote.id],
+        activeVaultId: vaultId,
+      }));
+    }
+  }, [activeWebVaultId, state.notes, state.folders, webVaults, saveWebVaultData, loadWebVaultData]);
+
+  // Auto-save web vault data periodically
+  useEffect(() => {
+    if (isElectron() || !activeWebVaultId) return;
+    const timer = setTimeout(() => {
+      saveWebVaultData(activeWebVaultId, state.notes, state.folders);
+    }, 2000);
+    return () => clearTimeout(timer);
+  }, [state.notes, state.folders, activeWebVaultId, saveWebVaultData]);
 
   // ── Vault helpers (Electron) ────────────────────────────────────────────────
   const loadVault = useCallback(async (vaultDir: string) => {
@@ -449,10 +570,27 @@ export default function ObsidianApp() {
 
               syncServiceRef.current = service;
 
-              // Fetch synced folder IDs from Firestore
-              service.fetchSyncedFolderIds().then((ids) => {
-                if (ids.length > 0) {
+              // Fetch synced folders from Firestore (full objects with names)
+              service.fetchSyncedFolders().then((remoteFolders) => {
+                if (remoteFolders.length > 0) {
+                  const ids = remoteFolders.map(f => f.id);
                   patch({ syncedFolderIds: ids });
+                  // Merge remote folder metadata into state so names are correct
+                  setState((prev) => {
+                    const folderMap = new Map(prev.folders.map(f => [f.id, f]));
+                    for (const rf of remoteFolders) {
+                      if (!folderMap.has(rf.id)) {
+                        folderMap.set(rf.id, rf);
+                      } else {
+                        // Update name from cloud if the local name is just the ID (placeholder)
+                        const existing = folderMap.get(rf.id)!;
+                        if (existing.name === existing.id) {
+                          folderMap.set(rf.id, { ...existing, name: rf.name, synced: true });
+                        }
+                      }
+                    }
+                    return { ...prev, folders: Array.from(folderMap.values()) };
+                  });
                 }
               });
 
@@ -683,33 +821,58 @@ export default function ObsidianApp() {
     });
   }, [vaultPath]);
 
-  // Import markdown files
-  const importNotes = useCallback((files: { title: string; content: string }[]) => {
+  // Import markdown files (supports folder structure)
+  const importNotes = useCallback((files: { title: string; content: string; folder?: string }[]) => {
     const now = new Date().toISOString().split("T")[0];
-    const newNotes: Note[] = files.map((f, i) => ({
-      id: `note-${Date.now()}-${i}`,
-      title: f.title,
-      content: f.content,
-      tags: [],
-      folder: "root",
-      createdAt: now,
-      updatedAt: now,
-      starred: false,
-      wordCount: f.content.split(/\s+/).filter(Boolean).length,
-      type: "markdown" as NoteType,
-    }));
-    setState((prev) => ({
-      ...prev,
-      notes: [...prev.notes, ...newNotes],
-    }));
-    newNotes.forEach((n) => pushNoteToFirestore(n));
-    // Write imported notes to disk in Electron
-    if (isElectron() && vaultPath) {
-      newNotes.forEach((n) => {
-        const fp = noteFilePath(vaultPath, n);
-        fsClient.writeFile(fp, noteToMarkdown({ ...n, filePath: fp }));
-      });
-    }
+    // Collect unique folders from imported files
+    const importedFolderNames = new Set<string>();
+    files.forEach((f) => { if (f.folder && f.folder !== "root") importedFolderNames.add(f.folder); });
+
+    const newFolders: Folder[] = [];
+    setState((prev) => {
+      const existingFolderNames = new Set(prev.folders.map((f) => f.name));
+      for (const name of importedFolderNames) {
+        if (!existingFolderNames.has(name)) {
+          newFolders.push({ id: `folder-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, name, parentId: "root" });
+        }
+      }
+      return prev; // Don't update yet
+    });
+
+    // Build folder name→id lookup after creating new folders
+    setState((prev) => {
+      const allFolders = [...prev.folders, ...newFolders];
+      const folderNameToId = new Map<string, string>();
+      allFolders.forEach((f) => folderNameToId.set(f.name, f.id));
+
+      const newNotes: Note[] = files.map((f, i) => ({
+        id: `note-${Date.now()}-${i}`,
+        title: f.title,
+        content: f.content,
+        tags: [],
+        folder: f.folder ? (folderNameToId.get(f.folder) || "root") : "root",
+        createdAt: now,
+        updatedAt: now,
+        starred: false,
+        wordCount: f.content.split(/\s+/).filter(Boolean).length,
+        type: "markdown" as NoteType,
+      }));
+
+      newNotes.forEach((n) => pushNoteToFirestore(n));
+      // Write imported notes to disk in Electron
+      if (isElectron() && vaultPath) {
+        newNotes.forEach((n) => {
+          const fp = noteFilePath(vaultPath, n);
+          fsClient.writeFile(fp, noteToMarkdown({ ...n, filePath: fp }));
+        });
+      }
+
+      return {
+        ...prev,
+        notes: [...prev.notes, ...newNotes],
+        folders: allFolders,
+      };
+    });
   }, [pushNoteToFirestore, vaultPath]);
 
   // Move note to folder
@@ -1196,6 +1359,15 @@ export default function ObsidianApp() {
           }
         }
       }
+      if (ctrl && e.key === "a") {
+        // Select all files in sidebar instead of selecting page text
+        const activeEl = document.activeElement;
+        const isInEditor = activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLInputElement || (activeEl as HTMLElement)?.isContentEditable;
+        if (!isInEditor) {
+          e.preventDefault();
+          sidebarSelectAllRef.current?.selectAll();
+        }
+      }
       if (ctrl && e.key === "l") {
         e.preventDefault();
         // Toggle checkbox on current line (handled by Editor)
@@ -1318,6 +1490,11 @@ export default function ObsidianApp() {
               onRestoreNote={restoreNote}
               onTogglePin={togglePinNote}
               vaultPath={vaultPath ?? undefined}
+              selectAllRef={sidebarSelectAllRef}
+              webVaults={!isElectron() ? webVaults : undefined}
+              activeWebVaultId={!isElectron() ? activeWebVaultId : undefined}
+              onCreateWebVault={!isElectron() ? createWebVault : undefined}
+              onSwitchWebVault={!isElectron() ? switchWebVault : undefined}
             />
           </div>
         )}
@@ -1420,6 +1597,11 @@ export default function ObsidianApp() {
           onRestoreNote={restoreNote}
           onTogglePin={togglePinNote}
           vaultPath={vaultPath ?? undefined}
+          selectAllRef={sidebarSelectAllRef}
+          webVaults={!isElectron() ? webVaults : undefined}
+          activeWebVaultId={!isElectron() ? activeWebVaultId : undefined}
+          onCreateWebVault={!isElectron() ? createWebVault : undefined}
+          onSwitchWebVault={!isElectron() ? switchWebVault : undefined}
         />
       </MobileDrawer>
 

@@ -24,7 +24,7 @@ interface SettingsModalProps {
   onThemeChange: (id: string) => void;
   onPreferencesChange: (prefs: Partial<EditorPreferences>) => void;
   onOpenMarketplace: () => void;
-  onImportNotes?: (files: { title: string; content: string }[]) => void;
+  onImportNotes?: (files: { title: string; content: string; folder?: string }[]) => void;
   onSwitchVault?: () => void;
   onCreateVault?: () => void;
 }
@@ -1228,6 +1228,7 @@ function HotkeysTab() {
     { action: "Toggle edit / preview", keys: ["Ctrl", "E"] },
     { action: "Toggle split view", keys: ["Ctrl", "\\"] },
     { action: "Search in vault", keys: ["Ctrl", "F"] },
+    { action: "Select all files", keys: ["Ctrl", "A"] },
     { action: "Open graph view", keys: ["Ctrl", "G"] },
     { action: "Toggle sidebar", keys: ["Ctrl", "B"] },
     { action: "Bold text", keys: ["Ctrl", "B"] },
@@ -1335,7 +1336,7 @@ function HotkeysTab() {
 
 // ─── Account Tab ──────────────────────────────────────────────────────────────
 
-function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSignOut: () => void; onImportNotes?: (files: { title: string; content: string }[]) => void }) {
+function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSignOut: () => void; onImportNotes?: (files: { title: string; content: string; folder?: string }[]) => void }) {
   const { user, notes } = state;
   if (!user) {
     return (
@@ -1432,7 +1433,7 @@ function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSi
             input.multiple = true;
             input.onchange = async () => {
               if (!input.files?.length) return;
-              const imported: { title: string; content: string }[] = [];
+              const imported: { title: string; content: string; folder?: string }[] = [];
               for (const file of Array.from(input.files)) {
                 const content = await file.text();
                 const title = file.name.replace(/\.(md|markdown|txt)$/i, "");
@@ -1451,6 +1452,42 @@ function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSi
         >
           <Upload size={14} />
           Import markdown files
+        </button>
+        <button
+          onClick={() => {
+            const input = document.createElement("input");
+            input.type = "file";
+            // webkitdirectory enables folder selection
+            input.setAttribute("webkitdirectory", "");
+            input.setAttribute("directory", "");
+            input.onchange = async () => {
+              if (!input.files?.length) return;
+              const imported: { title: string; content: string; folder?: string }[] = [];
+              for (const file of Array.from(input.files)) {
+                // Only import markdown/text files
+                if (!file.name.match(/\.(md|markdown|txt)$/i)) continue;
+                const content = await file.text();
+                const title = file.name.replace(/\.(md|markdown|txt)$/i, "");
+                // webkitRelativePath gives "FolderName/subfolder/file.md"
+                const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
+                const parts = relPath.split("/");
+                // If file is in a subfolder (not the root of the selected folder), use the subfolder name
+                // parts[0] = selected folder name, parts[1..n-1] = subfolders, parts[n] = filename
+                const folderName = parts.length > 2 ? parts.slice(1, -1).join("/") : undefined;
+                imported.push({ title, content, folder: folderName });
+              }
+              if (imported.length > 0) onImportNotes?.(imported);
+            };
+            input.click();
+          }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm hover:opacity-80 transition-opacity"
+          style={{
+            background: "var(--color-obsidian-accent)",
+            color: "#fff",
+          }}
+        >
+          <FolderOpen size={14} />
+          Import vault folder
         </button>
         <button
           onClick={onSignOut}

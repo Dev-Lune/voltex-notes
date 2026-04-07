@@ -127,6 +127,20 @@
   html:has(.obsidian-app-root), html:has(.obsidian-app-root) body {
     overflow: hidden;
   }
+  /* Prevent browser text selection on app shell — feels like a desktop app */
+  .obsidian-app-root {
+    user-select: none;
+    -webkit-user-select: none;
+  }
+  /* Allow text selection inside editor areas */
+  .obsidian-app-root textarea,
+  .obsidian-app-root [contenteditable="true"],
+  .obsidian-app-root .markdown-preview,
+  .obsidian-app-root pre,
+  .obsidian-app-root code {
+    user-select: text;
+    -webkit-user-select: text;
+  }
   body {
     @apply bg-background text-foreground font-sans antialiased;
     background-color: var(--obs-bg);

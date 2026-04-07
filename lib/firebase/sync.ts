@@ -287,6 +287,39 @@ export class SyncService {
     }
   }
 
+  /** Fetch full synced folder objects from Firestore. */
+  async fetchSyncedFolders(): Promise<Folder[]> {
+    const db = getFirebaseDb();
+    if (!db) return [];
+
+    try {
+      const foldersRef = collection(db, "users", this.userId, "folders");
+      const q = query(foldersRef);
+      return new Promise((resolve) => {
+        const unsub = onSnapshot(q, (snapshot) => {
+          unsub();
+          const folders: Folder[] = [];
+          snapshot.forEach((docSnap) => {
+            const data = docSnap.data();
+            if (data.id) {
+              folders.push({
+                id: data.id as string,
+                name: (data.name as string) || (data.id as string),
+                parentId: (data.parentId as string) || "root",
+                synced: true,
+              });
+            }
+          });
+          resolve(folders);
+        }, () => {
+          resolve([]);
+        });
+      });
+    } catch {
+      return [];
+    }
+  }
+
   // ─── Conflict Resolution ──────────────────────────────────────────────────
 
   async resolveConflict(
