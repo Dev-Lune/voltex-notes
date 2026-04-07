@@ -77,41 +77,72 @@ publish:
 
 releaseInfo:
   releaseNotes: |
-    ## What's New in v1.1.0
+    ## What's New in v1.2.0
 
-    ### Live Preview (CodeMirror 6)
-    - Brand-new live preview mode powered by CodeMirror 6
-    - Markdown syntax hides as you type — headings, bold, italic, links render inline
-    - Interactive checkboxes, horizontal rules, wikilink chips, and styled list bullets
-    - Smart Enter continues lists, tasks, and numbered items automatically
-    - Wikilink autocomplete via `[[` with note suggestions
-    - Cycle between Live / Source / Reading with Ctrl+E
+    ### Excalidraw Integration (Rewrite)
+    - Replaced custom canvas with official @excalidraw/excalidraw component
+    - Proper CSS isolation using official Excalidraw stylesheet
+    - Full drawing tools, collaboration-ready API, and theme support
+    - Dynamic SSR-safe loading with graceful fallback
 
-    ### 24 Themes
-    - 15 new themes: One Dark Pro, Rosé Pine, Everforest, Ayu Dark, Kanagawa, Moonlight, GitHub Dark, Material Ocean, Night Owl, Palenight, Solarized Light, Vitesse Dark, Catppuccin Latte, Poimandres, and more
-    - Window background color now matches the active theme (Electron)
+    ### Hand-Drawn Landing Page
+    - Complete homepage redesign with hand-drawn / sketchy design system
+    - Kalam + Patrick Hand handwritten fonts, paper dot texture background
+    - Wobbly borders, hard offset shadows, tape & tack decorations
+    - Post-it yellow tags, squiggly SVG underlines, rotated elements
+    - Animated stat counters, scroll-reveal transitions
+    - Feature comparison table with dashed borders
+    - Fully responsive with mobile hamburger menu
 
-    ### Per-Folder Cloud Sync
-    - Vault sync prompt — when opening a vault while signed in, prompts to sync by folder name
-    - Folder metadata synced to Firestore (`/users/{uid}/folders/{folderId}`)
-    - Synced folders show a cloud icon in the explorer sidebar
-    - Remote sync rebuilds folder structure from cloud notes automatically
+    ### Security — 12 Critical Fixes
+    - Path traversal protection on all Electron IPC file handlers (assertInsideVault)
+    - Per-note save debounce timers (was single shared timer — data loss risk)
+    - Rename/move notes now renames/moves files on disk
+    - Side-effects (delete, rmdir, renameDir) moved outside setState callbacks
+    - File watcher listeners no longer accumulate (memory leak fixed)
+    - Imported notes now write to disk in Electron mode
+    - Folder creation now calls mkdir on disk
+    - Race condition in sync initialization fixed (appReady gate)
+    - Plugin crash guard for undefined installedPluginIds
 
-    ### Vault & Explorer
-    - Explorer header shows the vault folder name instead of generic "Explorer"
-    - Folder management — right-click folders to rename or delete them
-    - Create Vault from Settings (no longer only in Welcome screen)
-    - Google Sign-In now opens in your system browser (Electron)
+    ### Bug Fixes — 13 High Severity
+    - exportNoteAsHTML no longer crashes
+    - Empty trash with confirmation dialog
+    - Permanent delete requires confirmation
+    - Back/forward navigation adds note to open tabs
+    - Fixed stale isMobile closure in marketplace
+    - Vault load errors show welcome modal instead of blank screen
+    - Ctrl+D delete requires confirmation
+    - Keyboard shortcuts use refs to avoid stale closures
+    - Electron IPC listeners use refs for stable callbacks
+    - switchWebVault no longer recreated on every render
+    - Web vault data saved before switching vaults
+    - Google Sign-In auth mutex prevents double sign-in
+    - Chokidar file watcher properly cleaned up
 
-    ### UI Redesign
-    - Redesigned loading screen with Voltex brand logo and animated dots
-    - Redesigned Electron splash screen to match brand identity
-    - Redesigned Google OAuth success/error pages in system browser
-    - Sample/built-in notes are excluded from cloud sync to prevent clutter
+    ### UX Improvements — 12 Medium
+    - Rebranded from "Obsidian Cloud" to "Voltex Notes" throughout
+    - Theme useEffect properly calls applyTheme on change
+    - Vault name creation uses inline input instead of prompt()
+    - TitleBar back/forward buttons disabled when no history
+    - Italic text uses proper foreground color
+    - Sliding panes feature now functional
+    - createNote no longer mutates folders inside setState
+    - Vault creation validates name input
+    - Hover preview links are clickable
+    - Auto-updater has proper error handling
+    - Splash window cleaned up on startup errors
 
-    ### Fixes
-    - Fixed force sync getting stuck on "Syncing…" forever
-    - Fixed file size inconsistency between root and folder notes in sidebar
-    - Removed inaccessible default folders (Templates, Marketplace Data)
-    - Mobile sidebar now has folder create/delete/rename support
-    - Added rmdir and renameDir support for Electron vault operations
+    ### Code Quality — 9 Low Severity
+    - drawingData stored as HTML comment block instead of YAML frontmatter
+    - YAML parsing via gray-matter (replaces manual parser)
+    - Regex patterns compiled once instead of every render
+    - navigator.platform replaced with navigator.userAgentData
+    - Preload script event listener leak fixed
+    - FoldableHeading has proper ARIA attributes
+    - JSON.parse for drawingData wrapped in try/catch
+    - OAuth flow mutex prevents simultaneous auth attempts
+
+    ### Empty State Fix
+    - Note type buttons (Daily, Drawing) now auto-create folders
+    - Notes created from empty state are visible in sidebar immediately

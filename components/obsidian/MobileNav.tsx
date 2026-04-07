@@ -369,7 +369,7 @@ export function MobileDrawer({ isOpen, onClose, children, title, side = "left" }
             </div>
             <div>
               <span className="font-bold text-base block" style={{ color: "var(--color-obsidian-text)" }}>
-                {title || "Obsidian Cloud"}
+                {title || "Voltex Notes"}
               </span>
               <span className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
                 Personal Vault

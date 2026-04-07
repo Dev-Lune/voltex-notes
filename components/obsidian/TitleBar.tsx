@@ -144,7 +144,7 @@ export default function TitleBar({
             border: "1px solid var(--color-obsidian-border)",
           }}
         >
-          {typeof navigator !== "undefined" && /mac/i.test(navigator.platform) ? "⌘P" : "Ctrl+P"}
+          {typeof navigator !== "undefined" && /mac/i.test((navigator as Navigator & { userAgentData?: { platform: string } }).userAgentData?.platform ?? navigator.platform ?? "") ? "⌘P" : "Ctrl+P"}
         </kbd>
       </button>
 

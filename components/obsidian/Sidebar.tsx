@@ -1404,7 +1404,11 @@ export default function Sidebar({
                     <RotateCcw size={13} />
                   </button>
                   <button
-                    onClick={() => onPermanentlyDelete?.(note.id)}
+                    onClick={() => {
+                      if (confirm(`Permanently delete "${note.title}"? This cannot be undone.`)) {
+                        onPermanentlyDelete?.(note.id);
+                      }
+                    }}
                     className="p-1.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
                     style={{ color: "#f38ba8" }}
                     aria-label="Delete permanently"
@@ -1416,7 +1420,11 @@ export default function Sidebar({
               ))}
               {trashedNotes.length > 0 && (
                 <button
-                  onClick={() => trashedNotes.forEach((n) => onPermanentlyDelete?.(n.id))}
+                  onClick={() => {
+                    if (confirm(`Permanently delete ${trashedNotes.length} note${trashedNotes.length === 1 ? "" : "s"}? This cannot be undone.`)) {
+                      trashedNotes.forEach((n) => onPermanentlyDelete?.(n.id));
+                    }
+                  }}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 mt-2 rounded-lg text-xs hover:opacity-80 transition-opacity"
                   style={{ background: "rgba(243,139,168,0.1)", color: "#f38ba8", border: "1px solid rgba(243,139,168,0.2)" }}
                 >

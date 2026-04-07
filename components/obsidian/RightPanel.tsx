@@ -39,6 +39,8 @@ type TabId = "backlinks" | "outline" | "properties" | "calendar" | "localgraph" 
 
 // ─── Backlinks Tab ────────────────────────────────────────────────────────────
 
+const WIKILINK_RE = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+
 function BacklinksTab({
   note,
   notes,
@@ -87,11 +89,9 @@ function BacklinksTab({
         {backlinks.length} note{backlinks.length !== 1 ? "s" : ""} link here
       </p>
       {backlinks.map((bl) => {
-        // Find context snippet
-        const wlRegex = /\[\[([^\]|]+)(?:\|[^\]]*)?\]\]/g;
+        // Find context snippet using module-level regex
         let snippet = "";
-        let m: RegExpExecArray | null;
-        while ((m = wlRegex.exec(bl.content)) !== null) {
+        for (const m of bl.content.matchAll(WIKILINK_RE)) {
           if (m[1].toLowerCase() === note.title.toLowerCase()) {
             const start = Math.max(0, m.index - 40);
             const end = Math.min(bl.content.length, m.index + m[0].length + 40);

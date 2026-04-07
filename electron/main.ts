@@ -332,7 +332,12 @@ function setupAutoUpdater(): void {
   ipcMain.handle('updater:install', () => {
     log('[updater] User triggered install & restart')
     ;(app as AppWithQuitting).isQuitting = true
-    autoUpdater.quitAndInstall()
+    try {
+      autoUpdater.quitAndInstall()
+    } catch (err) {
+      log(`[updater] quitAndInstall failed: ${err}`)
+      mainWindow?.webContents.send('updater:error', `Install failed: ${err}`)
+    }
   })
 }
 
@@ -546,6 +551,10 @@ if (!gotLock) {
       setupAutoUpdater()
     } catch (err) {
       log(`[ERROR] Startup failed: ${err}`)
+      if (splashWindow) {
+        splashWindow.destroy()
+        splashWindow = null
+      }
       dialog.showErrorBox('Voltex Notes — Startup Error', `${err}\n\nLog: ${logFile}`)
       app.quit()
     }

@@ -13,7 +13,25 @@ import {
 } from "lucide-react";
 import { Note, AppState, countWords, NoteType } from "./data";
 import MarkdownRenderer from "./MarkdownRenderer";
-import ExcalidrawCanvas from "./ExcalidrawCanvas";
+import dynamic from "next/dynamic";
+
+const ExcalidrawCanvas = dynamic(() => import("./ExcalidrawCanvas"), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--color-obsidian-muted-text)",
+      }}
+    >
+      Loading Excalidraw…
+    </div>
+  ),
+});
 
 // CodeMirror 6
 import { EditorState, StateField, type Extension } from "@codemirror/state";

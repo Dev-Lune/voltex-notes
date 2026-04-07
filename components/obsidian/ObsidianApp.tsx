@@ -102,6 +102,8 @@ export default function ObsidianApp() {
   const mainRef = useRef<HTMLDivElement>(null);
   const syncServiceRef = useRef<SyncService | null>(null);
   const pushDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   // Mobile state
   const isMobile = useMobile();
@@ -202,9 +204,11 @@ export default function ObsidianApp() {
 
   const switchWebVault = useCallback((vaultId: string, vaultsList?: Vault[]) => {
     if (isElectron()) return;
-    // Save current vault data before switching
-    if (activeWebVaultId) {
-      saveWebVaultData(activeWebVaultId, state.notes, state.folders);
+    // Flush current vault data before switching (H11: prevent data loss)
+    const cur = stateRef.current;
+    const curVaultId = activeWebVaultId;
+    if (curVaultId) {
+      saveWebVaultData(curVaultId, cur.notes, cur.folders);
     }
 
     const data = loadWebVaultData(vaultId);
@@ -244,7 +248,7 @@ export default function ObsidianApp() {
         activeVaultId: vaultId,
       }));
     }
-  }, [activeWebVaultId, state.notes, state.folders, webVaults, saveWebVaultData, loadWebVaultData]);
+  }, [activeWebVaultId, webVaults, saveWebVaultData, loadWebVaultData]);
 
   // Auto-save web vault data periodically
   useEffect(() => {
@@ -512,7 +516,9 @@ export default function ObsidianApp() {
               });
 
               // Listen for remote note changes (real-time sync)
+              // Gate behind appReady to avoid overwriting state before init completes
               service.onRemoteChange((remoteNotes) => {
+                if (!appReady) return;
                 setState((prev) => {
                   // First sync: if Firestore is empty, push local notes
                   if (remoteNotes.length === 0 && prev.notes.length > 0 && !initialSyncDone) {
@@ -615,7 +621,7 @@ export default function ObsidianApp() {
         syncServiceRef.current = null;
       }
     };
-  }, [patch]);
+  }, [patch, appReady]);
 
   // Push note to Firestore (debounced per note)
   const pushNoteToFirestore = useCallback((note: Note) => {
@@ -744,8 +750,17 @@ export default function ObsidianApp() {
     setState((prev) => {
       const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : (prev.preferences.defaultNoteLocation || "root");
       finalNote = { ...newNote, folder };
+
+      // Ensure the target folder exists so the note is visible in the sidebar
+      const folderNames: Record<string, string> = { daily: "Daily Notes", drawings: "Drawings" };
+      const folderExists = prev.folders.some((f) => f.id === folder);
+      const updatedFolders = folderExists
+        ? prev.folders
+        : [...prev.folders, { id: folder, name: folderNames[folder] ?? folder, parentId: "root" }];
+
       return {
         ...prev,
+        folders: updatedFolders,
         notes: [...prev.notes, finalNote],
         activeNoteId: id,
         openNoteIds: [...prev.openNoteIds, id],
@@ -790,35 +805,38 @@ export default function ObsidianApp() {
   // Delete folder — moves notes to root, removes folder from state
   const deleteFolder = useCallback((folderId: string) => {
     if (folderId === "root") return;
+    let folderName: string | undefined;
     setState((prev) => {
       const folder = prev.folders.find((f) => f.id === folderId);
-      // Remove directory on disk in Electron
-      if (isElectron() && vaultPath && folder) {
-        fsClient.rmdir(`${vaultPath}/${folder.name}`).catch(() => { /* ignore */ });
-      }
+      folderName = folder?.name;
       return {
         ...prev,
         notes: prev.notes.map((n) => n.folder === folderId ? { ...n, folder: "root" } : n),
         folders: prev.folders.filter((f) => f.id !== folderId),
       };
     });
+    // Remove directory on disk in Electron (outside setState)
+    if (isElectron() && vaultPath && folderName) {
+      fsClient.rmdir(`${vaultPath}/${folderName}`).catch(() => { /* ignore */ });
+    }
   }, [vaultPath]);
 
   // Rename folder
   const renameFolder = useCallback((folderId: string, newName: string) => {
     if (folderId === "root" || !newName.trim()) return;
+    let oldName: string | undefined;
     setState((prev) => {
       const folder = prev.folders.find((f) => f.id === folderId);
-      const oldName = folder?.name;
-      // Rename directory on disk in Electron
-      if (isElectron() && vaultPath && oldName && oldName !== newName.trim()) {
-        fsClient.renameDir(`${vaultPath}/${oldName}`, `${vaultPath}/${newName.trim()}`).catch(() => { /* ignore */ });
-      }
+      oldName = folder?.name;
       return {
         ...prev,
         folders: prev.folders.map((f) => f.id === folderId ? { ...f, name: newName.trim() } : f),
       };
     });
+    // Rename directory on disk in Electron (outside setState)
+    if (isElectron() && vaultPath && oldName && oldName !== newName.trim()) {
+      fsClient.renameDir(`${vaultPath}/${oldName}`, `${vaultPath}/${newName.trim()}`).catch(() => { /* ignore */ });
+    }
   }, [vaultPath]);
 
   // Import markdown files (supports folder structure)
@@ -1270,7 +1288,7 @@ export default function ObsidianApp() {
     const cleanups: (() => void)[] = [];
 
     // Tray "New Note" (#3)
-    cleanups.push(electronOn('tray:new-note', () => { createNote(); }));
+    cleanups.push(electronOn('tray:new-note', () => { createNoteRef.current(); }));
 
     // Menu events (#12)
     cleanups.push(electronOn('menu:open-settings', () => { patch({ settingsOpen: true }); }));
@@ -1279,10 +1297,10 @@ export default function ObsidianApp() {
       if (chosen) await openVaultWithPrompt(chosen);
     }));
     cleanups.push(electronOn('menu:toggle-sidebar', () => {
-      patch({ sidebarCollapsed: !state.sidebarCollapsed });
+      setState((prev) => ({ ...prev, sidebarCollapsed: !prev.sidebarCollapsed }));
     }));
     cleanups.push(electronOn('menu:toggle-right-panel', () => {
-      patch({ rightPanelOpen: !state.rightPanelOpen });
+      setState((prev) => ({ ...prev, rightPanelOpen: !prev.rightPanelOpen }));
     }));
 
     // Auto-updater UI (#11)
@@ -1294,10 +1312,24 @@ export default function ObsidianApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Keyboard shortcuts
+  // Keyboard shortcuts — uses stateRef to avoid re-registering on every state change
+  const createNoteRef = useRef(createNote);
+  createNoteRef.current = createNote;
+  const deleteNoteRef = useRef(deleteNote);
+  deleteNoteRef.current = deleteNote;
+  const pushNoteRef = useRef(pushNoteToFirestore);
+  pushNoteRef.current = pushNoteToFirestore;
+  const welcomeModalOpenRef = useRef(welcomeModalOpen);
+  welcomeModalOpenRef.current = welcomeModalOpen;
+  const workspaceSetupOpenRef = useRef(workspaceSetupOpen);
+  workspaceSetupOpenRef.current = workspaceSetupOpen;
+  const userInfoOpenRef = useRef(userInfoOpen);
+  userInfoOpenRef.current = userInfoOpen;
+
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const ctrl = e.ctrlKey || e.metaKey;
+      const s = stateRef.current;
       if (ctrl && e.key === "p") {
         e.preventDefault();
         patch({ commandPaletteOpen: true });
@@ -1307,7 +1339,7 @@ export default function ObsidianApp() {
         if (isMobile) {
           setMobileNewNoteMenuOpen(true);
         } else {
-          createNote();
+          createNoteRef.current();
         }
       }
       if (ctrl && e.key === "e") {
@@ -1341,26 +1373,24 @@ export default function ObsidianApp() {
       if (ctrl && e.key === "b") {
         e.preventDefault();
         if (!isMobile) {
-          patch({ sidebarCollapsed: !state.sidebarCollapsed });
+          setState((prev) => ({ ...prev, sidebarCollapsed: !prev.sidebarCollapsed }));
         }
       }
       if (ctrl && e.key === "s") {
         e.preventDefault();
-        // Manual save — trigger sync for active note
-        const active = state.notes.find((n) => n.id === state.activeNoteId);
-        if (active) pushNoteToFirestore(active);
+        const active = s.notes.find((n) => n.id === s.activeNoteId);
+        if (active) pushNoteRef.current(active);
       }
       if (ctrl && e.key === "d") {
         e.preventDefault();
-        if (state.activeNoteId) {
-          const noteTitle = state.notes.find((n) => n.id === state.activeNoteId)?.title ?? "this note";
+        if (s.activeNoteId) {
+          const noteTitle = s.notes.find((n) => n.id === s.activeNoteId)?.title ?? "this note";
           if (confirm(`Move "${noteTitle}" to trash?`)) {
-            deleteNote(state.activeNoteId);
+            deleteNoteRef.current(s.activeNoteId);
           }
         }
       }
       if (ctrl && e.key === "a") {
-        // Select all files in sidebar instead of selecting page text
         const activeEl = document.activeElement;
         const isInEditor = activeEl instanceof HTMLTextAreaElement || activeEl instanceof HTMLInputElement || (activeEl as HTMLElement)?.isContentEditable;
         if (!isInEditor) {
@@ -1370,20 +1400,16 @@ export default function ObsidianApp() {
       }
       if (ctrl && e.key === "l") {
         e.preventDefault();
-        // Toggle checkbox on current line (handled by Editor)
       }
       if (e.key === "Escape") {
-        if (welcomeModalOpen) {
+        if (welcomeModalOpenRef.current) {
           setWelcomeModalOpen(false);
           try { localStorage.setItem("voltex-welcome-dismissed", "true"); } catch { /* ignore */ }
         }
-        if (workspaceSetupOpen) {
-          // Don't allow escape to skip workspace setup
-        }
-        if (state.commandPaletteOpen) patch({ commandPaletteOpen: false });
-        if (state.settingsOpen) patch({ settingsOpen: false });
-        if (state.authModalOpen) patch({ authModalOpen: false });
-        if (userInfoOpen) setUserInfoOpen(false);
+        if (s.commandPaletteOpen) patch({ commandPaletteOpen: false });
+        if (s.settingsOpen) patch({ settingsOpen: false });
+        if (s.authModalOpen) patch({ authModalOpen: false });
+        if (userInfoOpenRef.current) setUserInfoOpen(false);
         if (isMobile) {
           setMobileDrawerOpen(false);
           setMobileNewNoteMenuOpen(false);
@@ -1392,7 +1418,7 @@ export default function ObsidianApp() {
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [state.commandPaletteOpen, state.settingsOpen, state.authModalOpen, state.sidebarCollapsed, state.activeNoteId, state.notes, patch, createNote, deleteNote, pushNoteToFirestore, isMobile, userInfoOpen, welcomeModalOpen, workspaceSetupOpen]);
+  }, [patch, isMobile]);
 
   const activeNote = state.notes.find((n) => n.id === state.activeNoteId);
 

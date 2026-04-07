@@ -55,6 +55,8 @@ devlune.txt
 DevLuneBadge.tsx
 VoltexNotes.txt
 
+*.bak
+
 .github/
 .ignore/
 docs/superpowers

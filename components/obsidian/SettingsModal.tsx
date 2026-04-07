@@ -356,7 +356,7 @@ function ThemeCustomizer({ customColors, onColorsChange, onReset }: ThemeCustomi
               className="p-2 rounded text-xs font-mono"
               style={{ background: customColors.codeBackground, color: customColors.codeText }}
             >
-              const greeting = &quot;Hello, Obsidian!&quot;;
+              const greeting = &quot;Hello, Voltex!&quot;;
             </div>
             <button
               className="mt-3 px-3 py-1.5 rounded-lg text-xs font-medium"

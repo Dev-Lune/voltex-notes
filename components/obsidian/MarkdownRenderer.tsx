@@ -500,6 +500,13 @@ function BlockReference({
 
 // ─── Foldable Heading ─────────────────────────────────────────────────────────
 
+const HEADING_SIZES: Record<number, string> = {
+  1: "1.8em", 2: "1.45em", 3: "1.2em", 4: "1.05em", 5: "0.95em", 6: "0.9em",
+};
+const HEADING_MARGINS: Record<number, string> = {
+  1: "28px 0 12px", 2: "24px 0 10px", 3: "20px 0 8px", 4: "16px 0 6px", 5: "14px 0 4px", 6: "12px 0 4px",
+};
+
 function FoldableHeading({
   level,
   text,
@@ -518,20 +525,16 @@ function FoldableHeading({
   notes?: Array<{ id: string; title: string; content: string }>;
 }) {
   const [folded, setFolded] = useState(false);
-  const sizes: Record<number, string> = {
-    1: "1.8em", 2: "1.45em", 3: "1.2em", 4: "1.05em", 5: "0.95em", 6: "0.9em",
-  };
-  const margins: Record<number, string> = {
-    1: "28px 0 12px", 2: "24px 0 10px", 3: "20px 0 8px", 4: "16px 0 6px", 5: "14px 0 4px", 6: "12px 0 4px",
-  };
 
   return (
     <div>
       <div
         role="button"
         tabIndex={0}
+        aria-expanded={!folded}
+        aria-label={`${folded ? "Expand" : "Collapse"} heading: ${text}`}
         onClick={() => setFolded((v) => !v)}
-        onKeyDown={(e) => e.key === "Enter" && setFolded((v) => !v)}
+        onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && (e.preventDefault(), setFolded((v) => !v))}
         style={{
           display: "flex",
           alignItems: "center",
@@ -562,10 +565,10 @@ function FoldableHeading({
           {
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
             style: {
-              fontSize: sizes[level],
+              fontSize: HEADING_SIZES[level],
               fontWeight: level <= 2 ? 700 : 600,
               color: "var(--color-foreground)",
-              margin: margins[level],
+              margin: HEADING_MARGINS[level],
               lineHeight: 1.3,
               borderBottom: level === 1 ? "1px solid var(--color-obsidian-border)" : "none",
               paddingBottom: level === 1 ? "8px" : "0",
@@ -701,7 +704,7 @@ function parseInline(
     } else if (match[8]) {
       // Italic *text*
       parts.push(
-        <em key={match.index} style={{ color: "var(--color-obsidian-muted-text)" }}>
+        <em key={match.index} style={{ fontStyle: "italic" }}>
           {match[9]}
         </em>
       );
@@ -1094,22 +1097,7 @@ export default function MarkdownRenderer({
     if (headerMatch) {
       const level = headerMatch[1].length;
       const text = headerMatch[2];
-      const sizes: Record<number, string> = {
-        1: "1.8em",
-        2: "1.45em",
-        3: "1.2em",
-        4: "1.05em",
-        5: "0.95em",
-        6: "0.9em",
-      };
-      const margins: Record<number, string> = {
-        1: "28px 0 12px",
-        2: "24px 0 10px",
-        3: "20px 0 8px",
-        4: "16px 0 6px",
-        5: "14px 0 4px",
-        6: "12px 0 4px",
-      };
+
       elements.push(
         React.createElement(
           `h${level}` as React.ElementType,
@@ -1117,10 +1105,10 @@ export default function MarkdownRenderer({
             key: key++,
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
             style: {
-              fontSize: sizes[level],
+              fontSize: HEADING_SIZES[level],
               fontWeight: level <= 2 ? 700 : 600,
               color: "var(--color-foreground)",
-              margin: margins[level],
+              margin: HEADING_MARGINS[level],
               lineHeight: 1.3,
               borderBottom: level === 1 ? "1px solid var(--color-obsidian-border)" : "none",
               paddingBottom: level === 1 ? "8px" : "0",

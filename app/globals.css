@@ -509,75 +509,6 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
-   Excalidraw Canvas Styles
-   ══════════════════════════════════════════════════════════════════════════════ */
-.excalidraw-canvas {
-  position: relative;
-  width: 100%;
-  height: 100%;
-  background: var(--obs-bg);
-  touch-action: none;
-  user-select: none;
-  -webkit-user-select: none;
-}
-
-.excalidraw-canvas canvas {
-  display: block;
-  width: 100%;
-  height: 100%;
-}
-
-.excalidraw-toolbar {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: 16px;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
-  background: var(--obs-surface);
-  border: 1px solid var(--obs-border);
-  border-radius: 16px;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
-  z-index: 10;
-}
-
-.excalidraw-toolbar button {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  color: var(--obs-muted);
-  transition: all 0.15s ease;
-}
-
-.excalidraw-toolbar button:hover,
-.excalidraw-toolbar button:active {
-  background: rgba(255,255,255,0.05);
-  color: var(--obs-text);
-}
-
-.excalidraw-toolbar button.active {
-  background: var(--obs-accent);
-  color: #fff;
-}
-
-@media (max-width: 767px) {
-  .excalidraw-toolbar {
-    bottom: 96px;
-    padding: 6px 8px;
-    gap: 2px;
-  }
-  .excalidraw-toolbar button {
-    width: 44px;
-    height: 44px;
-  }
-}
-
-/* ══════════════════════════════════════════════════════════════════════════════
    Markdown Preview Mobile
    ══════════════════════════════════════════════════════════════════════════════ */
 @media (max-width: 767px) {
@@ -759,7 +690,6 @@ textarea:focus-visible {
 @media print {
   .mobile-bottom-nav,
   .mobile-header,
-  .excalidraw-toolbar,
   .mobile-drawer,
   .bottom-sheet {
     display: none !important;

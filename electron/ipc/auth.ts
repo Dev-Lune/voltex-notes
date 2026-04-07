@@ -20,8 +20,7 @@ import crypto from 'crypto'
 const GOOGLE_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth'
 const GOOGLE_TOKEN_URL = 'https://oauth2.googleapis.com/token'
 const SCOPES = 'openid email profile'
-const LOOPBACK_PORT = 8923
-const REDIRECT_URI = `http://127.0.0.1:${LOOPBACK_PORT}/callback`
+let authInProgress = false
 
 /** Exchange authorization code for tokens using Node https */
 function exchangeCode(
@@ -134,10 +133,17 @@ export function registerAuthHandlers(): void {
   ipcMain.handle(
     'auth:google-sign-in',
     async (_event, clientId: string, clientSecret: string) => {
+      // Prevent concurrent sign-in attempts (H12)
+      if (authInProgress) {
+        return { error: 'Sign-in already in progress' }
+      }
+      authInProgress = true
+
       // PKCE state for CSRF protection
       const state = crypto.randomBytes(16).toString('hex')
 
       return new Promise<{ idToken: string } | { error: string }>((resolve) => {
+        const cleanup = () => { authInProgress = false }
         // Spin up a one-shot local HTTP server
         const server = http.createServer((req, res) => {
           if (!req.url?.startsWith('/callback')) {
@@ -155,6 +161,7 @@ export function registerAuthHandlers(): void {
             res.writeHead(200, { 'Content-Type': 'text/html' })
             res.end(errorHtml(error))
             server.close()
+            cleanup()
             resolve({ error: `Google auth error: ${error}` })
             return
           }
@@ -163,6 +170,7 @@ export function registerAuthHandlers(): void {
             res.writeHead(200, { 'Content-Type': 'text/html' })
             res.end(errorHtml('State mismatch — possible CSRF'))
             server.close()
+            cleanup()
             resolve({ error: 'State mismatch' })
             return
           }
@@ -171,30 +179,34 @@ export function registerAuthHandlers(): void {
             res.writeHead(200, { 'Content-Type': 'text/html' })
             res.end(errorHtml('No authorization code received'))
             server.close()
+            cleanup()
             resolve({ error: 'No authorization code' })
             return
           }
 
-          const redirectUri = REDIRECT_URI
+          const redirectUri = `http://127.0.0.1:${(server.address() as { port: number }).port}/callback`
 
           exchangeCode(code, clientId, clientSecret, redirectUri)
             .then(({ id_token }) => {
               res.writeHead(200, { 'Content-Type': 'text/html' })
               res.end(successHtml())
               server.close()
+              cleanup()
               resolve({ idToken: id_token })
             })
             .catch((err) => {
               res.writeHead(200, { 'Content-Type': 'text/html' })
               res.end(errorHtml(String(err)))
               server.close()
+              cleanup()
               resolve({ error: String(err) })
             })
         })
 
-        // Listen on fixed port on loopback
-        server.listen(LOOPBACK_PORT, '127.0.0.1', () => {
-          const redirectUri = REDIRECT_URI
+        // Listen on port 0 for random available port (avoids EADDRINUSE)
+        server.listen(0, '127.0.0.1', () => {
+          const port = (server.address() as { port: number }).port
+          const redirectUri = `http://127.0.0.1:${port}/callback`
 
           const authUrl =
             `${GOOGLE_AUTH_URL}?` +
@@ -214,6 +226,7 @@ export function registerAuthHandlers(): void {
         // Timeout after 5 minutes — user may have abandoned
         setTimeout(() => {
           server.close()
+          cleanup()
           resolve({ error: 'Sign-in timed out' })
         }, 5 * 60 * 1000)
       })
