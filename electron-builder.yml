@@ -80,72 +80,18 @@ publish:
 
 releaseInfo:
   releaseNotes: |
-    ## What's New in v1.2.0
+    ## What's New in v1.3.0
 
-    ### Excalidraw Integration (Rewrite)
-    - Replaced custom canvas with official @excalidraw/excalidraw component
-    - Proper CSS isolation using official Excalidraw stylesheet
-    - Full drawing tools, collaboration-ready API, and theme support
-    - Dynamic SSR-safe loading with graceful fallback
+    ### Canvas Fixes
+    - Canvas notes now render as the visual canvas instead of raw JSON/code in editor mode
+    - Fixed anchor/node interaction for attaching cards
+    - Fixed color picker responsiveness and theme-aware canvas overlay styling
 
-    ### Hand-Drawn Landing Page
-    - Complete homepage redesign with hand-drawn / sketchy design system
-    - Kalam + Patrick Hand handwritten fonts, paper dot texture background
-    - Wobbly borders, hard offset shadows, tape & tack decorations
-    - Post-it yellow tags, squiggly SVG underlines, rotated elements
-    - Animated stat counters, scroll-reveal transitions
-    - Feature comparison table with dashed borders
-    - Fully responsive with mobile hamburger menu
+    ### Data Reset Improvements
+    - Added `Delete all data` under `Settings > Account`
+    - Reset now clears local notes, synced cloud data, current vault state, and recent vault entries
+    - No more phantom `Untitled` note after wiping data
 
-    ### Security — 12 Critical Fixes
-    - Path traversal protection on all Electron IPC file handlers (assertInsideVault)
-    - Per-note save debounce timers (was single shared timer — data loss risk)
-    - Rename/move notes now renames/moves files on disk
-    - Side-effects (delete, rmdir, renameDir) moved outside setState callbacks
-    - File watcher listeners no longer accumulate (memory leak fixed)
-    - Imported notes now write to disk in Electron mode
-    - Folder creation now calls mkdir on disk
-    - Race condition in sync initialization fixed (appReady gate)
-    - Plugin crash guard for undefined installedPluginIds
-
-    ### Bug Fixes — 13 High Severity
-    - exportNoteAsHTML no longer crashes
-    - Empty trash with confirmation dialog
-    - Permanent delete requires confirmation
-    - Back/forward navigation adds note to open tabs
-    - Fixed stale isMobile closure in marketplace
-    - Vault load errors show welcome modal instead of blank screen
-    - Ctrl+D delete requires confirmation
-    - Keyboard shortcuts use refs to avoid stale closures
-    - Electron IPC listeners use refs for stable callbacks
-    - switchWebVault no longer recreated on every render
-    - Web vault data saved before switching vaults
-    - Google Sign-In auth mutex prevents double sign-in
-    - Chokidar file watcher properly cleaned up
-
-    ### UX Improvements — 12 Medium
-    - Rebranded from "Obsidian Cloud" to "Voltex Notes" throughout
-    - Theme useEffect properly calls applyTheme on change
-    - Vault name creation uses inline input instead of prompt()
-    - TitleBar back/forward buttons disabled when no history
-    - Italic text uses proper foreground color
-    - Sliding panes feature now functional
-    - createNote no longer mutates folders inside setState
-    - Vault creation validates name input
-    - Hover preview links are clickable
-    - Auto-updater has proper error handling
-    - Splash window cleaned up on startup errors
-
-    ### Code Quality — 9 Low Severity
-    - drawingData stored as HTML comment block instead of YAML frontmatter
-    - YAML parsing via gray-matter (replaces manual parser)
-    - Regex patterns compiled once instead of every render
-    - navigator.platform replaced with navigator.userAgentData
-    - Preload script event listener leak fixed
-    - FoldableHeading has proper ARIA attributes
-    - JSON.parse for drawingData wrapped in try/catch
-    - OAuth flow mutex prevents simultaneous auth attempts
-
-    ### Empty State Fix
-    - Note type buttons (Daily, Drawing) now auto-create folders
-    - Notes created from empty state are visible in sidebar immediately
+    ### Vault UX
+    - Restored recent vault selection in the Explorer vault picker
+    - Improved empty-vault state after reset and reopen

@@ -4,6 +4,23 @@ All notable changes to Voltex Notes are documented here.
 
 ---
 
+## [1.3.0] — 2026-04-08
+
+### Added
+- **Delete all data** option in `Settings > Account` for fully wiping local and synced workspace data.
+
+### Fixed
+- **Canvas rendering** — canvas notes now open in the real visual canvas instead of raw serialized JSON/code.
+- **Canvas interactions** — anchors, color controls, and themed top overlay now respond correctly.
+- **Delete-all flow** — resetting data no longer leaves behind a phantom `Untitled` note/tab.
+- **Recent vault handling** — recent vault selection is restored in the vault picker, and delete-all now clears stored recent vault entries too.
+- **Vault reset state** — Explorer and editor now correctly return to an empty/closed-vault state after data wipe.
+
+### Changed
+- Updated release metadata and notes for the `1.3.0` desktop build.
+
+---
+
 ## [1.2.0] — 2026-04-07
 
 ### Added
