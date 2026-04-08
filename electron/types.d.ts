@@ -12,6 +12,7 @@ export interface ElectronAPI {
     create: (name: string, parentPath: string) => Promise<string>;
     listRecent: () => Promise<RecentVault[]>;
     setRecent: (vaultPath: string) => Promise<void>;
+    clearRecent: () => Promise<void>;
   };
   fs: {
     readFile: (filePath: string) => Promise<string | null>;

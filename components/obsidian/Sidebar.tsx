@@ -40,6 +40,8 @@ interface SidebarProps {
   /** Electron vault management */
   onOpenVault?: () => void;
   onCreateVault?: () => void;
+  recentVaults?: Array<{ path: string; name: string; lastOpened: number }>;
+  onOpenRecent?: (vaultPath: string) => void;
 }
 
 type SortMode = "modified" | "created" | "title-asc" | "title-desc";
@@ -620,6 +622,8 @@ export default function Sidebar({
   onSwitchWebVault,
   onOpenVault,
   onCreateVault,
+  recentVaults,
+  onOpenRecent,
 }: SidebarProps) {
   const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders, syncedFolderIds } = state;
   // Filter out trashed notes for normal views
@@ -1001,6 +1005,27 @@ export default function Sidebar({
                         <Plus size={12} />
                         Create New Vault…
                       </button>
+                    )}
+                    {recentVaults && recentVaults.length > 0 && onOpenRecent && (
+                      <div style={{ borderTop: "1px solid var(--color-obsidian-border)" }}>
+                        <div className="px-2 py-1.5">
+                          <span className="text-xs font-medium" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                            Recent Vaults
+                          </span>
+                        </div>
+                        {recentVaults.slice(0, 6).map((vault) => (
+                          <button
+                            key={vault.path}
+                            onClick={() => { onOpenRecent(vault.path); setVaultPickerOpen(false); }}
+                            className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                            style={{ color: "var(--color-obsidian-text)" }}
+                            title={vault.path}
+                          >
+                            <Clock size={11} style={{ opacity: 0.7 }} />
+                            <span className="truncate">{vault.name || vault.path.replace(/\\/g, "/").split("/").pop() || vault.path}</span>
+                          </button>
+                        ))}
+                      </div>
                     )}
                   </div>
                 </>

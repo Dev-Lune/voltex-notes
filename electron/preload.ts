@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
       ipcRenderer.invoke('vault:create', name, parentPath),
     listRecent: () => ipcRenderer.invoke('vault:list-recent'),
     setRecent: (vaultPath: string) => ipcRenderer.invoke('vault:set-recent', vaultPath),
+    clearRecent: () => ipcRenderer.invoke('vault:clear-recent'),
   },
   fs: {
     readFile: (filePath: string) => ipcRenderer.invoke('fs:read-file', filePath),

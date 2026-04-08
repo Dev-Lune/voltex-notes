@@ -12,6 +12,7 @@ interface VaultElectronAPI {
     create: (name: string, parentPath: string) => Promise<string>;
     listRecent: () => Promise<VaultRecentEntry[]>;
     setRecent: (vaultPath: string) => Promise<void>;
+    clearRecent: () => Promise<void>;
   };
   fs: {
     readFile: (filePath: string) => Promise<string | null>;
@@ -77,6 +78,9 @@ export const vaultClient = {
 
   setRecent: (vaultPath: string) =>
     api().vault.setRecent(vaultPath),
+
+  clearRecent: () =>
+    api().vault.clearRecent(),
 }
 
 export const fsClient = {

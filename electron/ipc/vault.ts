@@ -48,4 +48,10 @@ export function registerVaultHandlers(): void {
     // Add to OS Recent Documents (#14)
     app.addRecentDocument(vaultPath)
   })
+
+  // Clear all recent vaults from app storage + OS recent documents
+  ipcMain.handle('vault:clear-recent', () => {
+    store.set('recentVaults', [])
+    app.clearRecentDocuments()
+  })
 }

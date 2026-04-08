@@ -34,6 +34,24 @@ const ExcalidrawCanvas = dynamic(() => import("./ExcalidrawCanvas"), {
   ),
 });
 
+const CanvasView = dynamic(() => import("./CanvasView"), {
+  ssr: false,
+  loading: () => (
+    <div
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        color: "var(--color-obsidian-muted-text)",
+      }}
+    >
+      Loading canvas…
+    </div>
+  ),
+});
+
 // CodeMirror 6
 import { EditorState, StateField, type Extension } from "@codemirror/state";
 import { EditorView, Decoration, type DecorationSet, WidgetType, ViewPlugin, type ViewUpdate, keymap } from "@codemirror/view";
@@ -3528,6 +3546,18 @@ export default function Editor({
         <ExcalidrawCanvas
           note={activeNote}
           onNoteChange={onNoteChange}
+        />
+      );
+    }
+
+    // Canvas note — render visual canvas instead of raw JSON
+    if (activeNote.type === "canvas") {
+      return (
+        <CanvasView
+          note={activeNote}
+          allNotes={notes}
+          onChange={(content) => onNoteChange(activeNote.id, { content })}
+          onNoteClick={onNoteClick}
         />
       );
     }

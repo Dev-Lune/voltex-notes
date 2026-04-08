@@ -228,27 +228,17 @@ export default function ObsidianApp() {
         folders: data.folders,
         activeNoteId: data.notes[0].id,
         openNoteIds: [data.notes[0].id],
+        mainView: data.notes[0].type === "canvas" ? "canvas" : "editor",
         activeVaultId: vaultId,
       }));
     } else {
-      const blankNote: Note = {
-        id: `note-${Date.now()}`,
-        title: "Untitled",
-        content: `# ${vault?.name || "Vault"}\n\nStart writing…`,
-        tags: [],
-        folder: "root",
-        createdAt: new Date().toISOString().split("T")[0],
-        updatedAt: new Date().toISOString().split("T")[0],
-        starred: false,
-        wordCount: 0,
-        type: "markdown",
-      };
       setState((prev) => ({
         ...prev,
-        notes: [blankNote],
-        folders: [{ id: "root", name: "Vault", parentId: null }],
-        activeNoteId: blankNote.id,
-        openNoteIds: [blankNote.id],
+        notes: [],
+        folders: [{ id: "root", name: vault?.name || "Vault", parentId: null }],
+        activeNoteId: null,
+        openNoteIds: [],
+        mainView: "editor",
         activeVaultId: vaultId,
       }));
     }
@@ -691,11 +681,12 @@ export default function ObsidianApp() {
       const id = historyRef.current[historyIdxRef.current];
       setState((prev) => {
         const alreadyOpen = prev.openNoteIds.includes(id);
+        const note = prev.notes.find((n) => n.id === id);
         return {
           ...prev,
           activeNoteId: id,
           openNoteIds: alreadyOpen ? prev.openNoteIds : [...prev.openNoteIds, id],
-          mainView: "editor",
+          mainView: note?.type === "canvas" ? "canvas" : "editor",
         };
       });
     }
@@ -707,11 +698,12 @@ export default function ObsidianApp() {
       const id = historyRef.current[historyIdxRef.current];
       setState((prev) => {
         const alreadyOpen = prev.openNoteIds.includes(id);
+        const note = prev.notes.find((n) => n.id === id);
         return {
           ...prev,
           activeNoteId: id,
           openNoteIds: alreadyOpen ? prev.openNoteIds : [...prev.openNoteIds, id],
-          mainView: "editor",
+          mainView: note?.type === "canvas" ? "canvas" : "editor",
         };
       });
     }
@@ -1206,24 +1198,11 @@ export default function ObsidianApp() {
 
   const handleDeleteAllData = useCallback(async () => {
     const confirmed = confirm(
-      "Delete all notes, folders, local vault data, and synced cloud data? This cannot be undone."
+      "Delete all notes, folders, local vault data, and synced cloud data? This cannot be undone and will close the current vault."
     );
     if (!confirmed) return;
 
     const currentState = stateRef.current;
-    const now = new Date().toISOString().split("T")[0];
-    const blankNote: Note = {
-      id: `note-${Date.now()}`,
-      title: "Untitled",
-      content: "# Untitled\n\nStart writing…",
-      tags: [],
-      folder: "root",
-      createdAt: now,
-      updatedAt: now,
-      starred: false,
-      wordCount: 0,
-      type: "markdown",
-    };
 
     try {
       if (currentState.user?.uid) {
@@ -1266,6 +1245,9 @@ export default function ObsidianApp() {
             await Promise.allSettled(folderPaths.map((dirPath) => fsClient.rmdir(dirPath)));
           }
         }
+
+        await vaultClient.clearRecent();
+        setRecentVaults([]);
       } else if (typeof window !== "undefined") {
         try {
           const keysToRemove = Object.keys(localStorage).filter((key) => key.startsWith("voltex-"));
@@ -1279,21 +1261,28 @@ export default function ObsidianApp() {
         setActiveWebVaultId(null);
       }
 
-      historyRef.current = [blankNote.id];
-      historyIdxRef.current = 0;
+      if (fileWatcherCleanupRef.current) {
+        fileWatcherCleanupRef.current();
+        fileWatcherCleanupRef.current = null;
+      }
+
+      historyRef.current = [];
+      historyIdxRef.current = -1;
       setDirtyNoteIds(new Set());
       setSyncPromptVisible(false);
       setMobileDrawerOpen(false);
       setMobileNewNoteMenuOpen(false);
       setMobileRightPanelOpen(false);
       setMobileView("home");
+      setVaultPath(null);
+      setWelcomeModalOpen(isElectron());
 
       setState((prev) => ({
         ...prev,
-        notes: [blankNote],
+        notes: [],
         folders: [{ id: "root", name: "Vault", parentId: null }],
-        activeNoteId: blankNote.id,
-        openNoteIds: [blankNote.id],
+        activeNoteId: null,
+        openNoteIds: [],
         sidebarView: "files",
         mainView: "editor",
         searchQuery: "",
@@ -1301,6 +1290,7 @@ export default function ObsidianApp() {
         commandPaletteOpen: false,
         marketplaceOpen: false,
         syncedFolderIds: [],
+        activeVaultId: undefined,
       }));
     } catch {
       alert("Failed to delete all data. Please try again.");
@@ -1685,6 +1675,10 @@ export default function ObsidianApp() {
               } : undefined}
               onCreateVault={isElectron() ? () => {
                 setVaultNameInput({ parentPath: "" });
+              } : undefined}
+              recentVaults={isElectron() ? recentVaults : undefined}
+              onOpenRecent={isElectron() ? async (recentPath) => {
+                await openVaultWithPrompt(recentPath);
               } : undefined}
             />
           </div>
