@@ -491,7 +491,7 @@ function LinkAutocomplete({ notes, filter, position, onSelect, onClose }: LinkAu
           onClick={() => onSelect(note.title)}
           className="w-full text-left px-3 py-2 flex items-center gap-2 transition-colors"
           style={{
-            background: i === selectedIndex ? "rgba(124,106,247,0.15)" : "transparent",
+            background: i === selectedIndex ? "var(--color-obsidian-selection)" : "transparent",
             color: i === selectedIndex ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
             fontSize: "0.85em",
           }}
@@ -738,6 +738,7 @@ function TabBar({
             {note?.type === "daily" && <CalendarDays size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
             {note?.type === "kanban" && <LayoutGrid size={10} style={{ color: "#89b4fa", flexShrink: 0 }} />}
             {note?.type === "table" && <Table2 size={10} style={{ color: "#a6e3a1", flexShrink: 0 }} />}
+            {note?.type === "canvas" && <Layers size={10} style={{ color: "#74c7ec", flexShrink: 0 }} />}
             <span className="text-xs truncate">{note?.title ?? "Untitled"}</span>
             {dirtyNoteIds?.has(id) && (
               <span className="text-xs" style={{ color: "var(--color-obsidian-accent)", lineHeight: 1 }}>•</span>
@@ -1954,7 +1955,7 @@ function GitHistoryPanel({ note, onClose, onRestore }: {
             <div key={v.id}>
               <button
                 className="w-full text-left px-3 py-2 hover:bg-white/5 transition-colors flex items-center gap-2"
-                style={{ background: selectedIdx === i ? "rgba(124,106,247,0.1)" : "transparent" }}
+                style={{ background: selectedIdx === i ? "var(--color-obsidian-selection-sm)" : "transparent" }}
                 onClick={() => setSelectedIdx(selectedIdx === i ? null : i)}>
                 <div className="w-1.5 h-1.5 rounded-full" style={{ background: i === 0 ? "#a6e3a1" : "var(--color-obsidian-muted-text)" }} />
                 <div className="flex-1 min-w-0">
@@ -3529,11 +3530,6 @@ export default function Editor({
           onNoteChange={onNoteChange}
         />
       );
-    }
-
-    // Daily note
-    if (activeNote.type === "daily") {
-      return <DailyNoteView note={activeNote} onNoteChange={onNoteChange} />;
     }
 
     // Kanban note (requires Kanban plugin)

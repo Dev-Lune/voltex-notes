@@ -272,9 +272,10 @@ function FileTreeItem({
   return (
     <div
       data-file-item
-      className="group relative flex items-center gap-2 px-3 py-2 min-h-[44px] rounded-md cursor-pointer text-sm transition-colors"
+      className="group relative flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-sm transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none"
+      tabIndex={0}
       style={{
-        background: isSelected ? "rgba(243,139,168,0.15)" : isActive ? "rgba(124,106,247,0.18)" : "transparent",
+        background: isSelected ? "rgba(243,139,168,0.15)" : isActive ? "color-mix(in srgb, var(--color-obsidian-accent) 13%, transparent)" : "transparent",
         color: isActive ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
       }}
       onClick={() => {
@@ -469,7 +470,7 @@ function FolderGroup({
           className="group/folder w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all cursor-pointer"
           style={{
             color: "var(--color-obsidian-muted-text)",
-            background: dragOver ? "rgba(124,106,247,0.15)" : "transparent",
+            background: dragOver ? "var(--color-obsidian-selection)" : "transparent",
             borderRadius: 4,
           }}
           onClick={() => setOpen((v) => !v)}
@@ -855,10 +856,10 @@ export default function Sidebar({
                 mainView: id === "graph" ? "graph" : id === "canvas" ? "canvas" : "editor",
               })
             }
-            className="w-8 h-8 flex items-center justify-center rounded-md transition-colors"
+            className="w-8 h-8 flex items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none"
             style={{
               color: sidebarView === id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)",
-              background: sidebarView === id ? "rgba(124,106,247,0.18)" : "transparent",
+              background: sidebarView === id ? "color-mix(in srgb, var(--color-obsidian-accent) 15%, transparent)" : "transparent",
             }}
           >
             <Icon size={16} />
@@ -921,7 +922,7 @@ export default function Sidebar({
                         className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
                         style={{
                           color: v.id === activeWebVaultId ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
-                          background: v.id === activeWebVaultId ? "rgba(124,106,247,0.1)" : "transparent",
+                          background: v.id === activeWebVaultId ? "color-mix(in srgb, var(--color-obsidian-accent) 10%, transparent)" : "transparent",
                         }}
                       >
                         <FolderOpen size={11} />
@@ -1280,7 +1281,7 @@ export default function Sidebar({
                 style={{
                   borderRadius: 6,
                   border: rootDragOver ? "1.5px dashed var(--color-obsidian-accent)" : "1.5px dashed transparent",
-                  background: rootDragOver ? "rgba(124,106,247,0.08)" : "transparent",
+                  background: rootDragOver ? "var(--color-obsidian-selection-sm)" : "transparent",
                   transition: "border 0.15s, background 0.15s",
                   minHeight: 32,
                   padding: rootDragOver ? 4 : 0,
@@ -1353,10 +1354,10 @@ export default function Sidebar({
                 <button
                   key={note.id}
                   onClick={() => onStateChange({ activeNoteId: note.id, mainView: "editor" })}
-                  className="text-left px-2 py-2 min-h-[44px] rounded-md hover:bg-white/5 transition-colors"
+                  className="text-left px-2 py-1.5 rounded-md hover:bg-white/5 transition-colors"
                   style={{
                     color: activeNoteId === note.id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
-                    background: activeNoteId === note.id ? "rgba(124,106,247,0.15)" : "transparent",
+                    background: activeNoteId === note.id ? "color-mix(in srgb, var(--color-obsidian-accent) 13%, transparent)" : "transparent",
                   }}
                 >
                   <div className="flex items-center gap-1.5 mb-0.5">

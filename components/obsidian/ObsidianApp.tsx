@@ -430,7 +430,7 @@ export default function ObsidianApp() {
   // Auto-collapse right panel on small desktop viewports
   useEffect(() => {
     if (isMobile) return;
-    if (viewportWidth > 0 && viewportWidth < 1100) {
+    if (viewportWidth > 0 && viewportWidth < 1280) {
       patch({ rightPanelOpen: false });
     }
   }, [viewportWidth, isMobile, patch]);
@@ -800,6 +800,44 @@ export default function ObsidianApp() {
       setMobileView("home");
     }
   }, [pushNoteToFirestore, isMobile, vaultPath]);
+
+  // Create a daily note for a specific date (used by calendar widget)
+  const createDailyNote = useCallback((date: Date) => {
+    const id = `note-${Date.now()}`;
+    const dateStr = date.toISOString().split("T")[0];
+    const title = date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
+    const newNote: Note = {
+      id,
+      title,
+      content: `# ${title}\n\n## Morning Intentions\n\n## Notes\n\n## Reflection\n`,
+      tags: ["daily"],
+      folder: "daily",
+      createdAt: dateStr,
+      updatedAt: dateStr,
+      starred: false,
+      wordCount: 0,
+      type: "daily",
+    };
+    setState((prev) => {
+      const folderExists = prev.folders.some((f) => f.id === "daily");
+      const updatedFolders = folderExists
+        ? prev.folders
+        : [...prev.folders, { id: "daily", name: "Daily Notes", parentId: "root" as string | null }];
+      return {
+        ...prev,
+        folders: updatedFolders,
+        notes: [...prev.notes, newNote],
+        activeNoteId: id,
+        openNoteIds: [...prev.openNoteIds, id],
+        mainView: "editor",
+      };
+    });
+    pushNoteToFirestore(newNote);
+    if (isMobile) {
+      setMobileRightPanelOpen(false);
+      setMobileView("home");
+    }
+  }, [pushNoteToFirestore, isMobile]);
 
   // Create folder
   const createFolder = useCallback((name: string) => {
@@ -1618,32 +1656,7 @@ export default function ObsidianApp() {
               onStateChange={patch}
               onNoteClick={openNote}
               onRestoreVersion={restoreNoteVersion}
-              onNewDailyNote={(date) => {
-                // Create a daily note for the specified date
-                const id = `note-${Date.now()}`;
-                const dateStr = date.toISOString().split("T")[0];
-                const title = date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-                const newNote: Note = {
-                  id,
-                  title,
-                  content: `# ${title}\n\n## Morning Intentions\n\n## Notes\n\n## Reflection\n`,
-                  tags: ["daily"],
-                  folder: "daily",
-                  createdAt: dateStr,
-                  updatedAt: dateStr,
-                  starred: false,
-                  wordCount: 0,
-                  type: "daily",
-                };
-                setState((prev) => ({
-                  ...prev,
-                  notes: [...prev.notes, newNote],
-                  activeNoteId: id,
-                  openNoteIds: [...prev.openNoteIds, id],
-                  mainView: "editor",
-                }));
-                pushNoteToFirestore(newNote);
-              }}
+              onNewDailyNote={createDailyNote}
             />
           </div>
         )}
@@ -1700,32 +1713,7 @@ export default function ObsidianApp() {
             onStateChange={patch}
             onNoteClick={(id) => { openNote(id); setMobileRightPanelOpen(false); }}
             onRestoreVersion={restoreNoteVersion}
-            onNewDailyNote={(date) => {
-              const id = `note-${Date.now()}`;
-              const dateStr = date.toISOString().split("T")[0];
-              const title = date.toLocaleDateString("en-US", { weekday: "long", month: "short", day: "numeric" });
-              const newNote: Note = {
-                id,
-                title,
-                content: `# ${title}\n\n## Morning Intentions\n\n## Notes\n\n## Reflection\n`,
-                tags: ["daily"],
-                folder: "daily",
-                createdAt: dateStr,
-                updatedAt: dateStr,
-                starred: false,
-                wordCount: 0,
-                type: "daily",
-              };
-              setState((prev) => ({
-                ...prev,
-                notes: [...prev.notes, newNote],
-                activeNoteId: id,
-                openNoteIds: [...prev.openNoteIds, id],
-                mainView: "editor",
-              }));
-              pushNoteToFirestore(newNote);
-              setMobileRightPanelOpen(false);
-            }}
+            onNewDailyNote={createDailyNote}
           />
         </MobileDrawer>
       )}

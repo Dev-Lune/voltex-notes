@@ -101,6 +101,13 @@
   --color-obsidian-tag-bg:      var(--obs-tag-bg);
   --color-obsidian-code-bg:     var(--obs-code-bg);
   --color-obsidian-code-text:   var(--obs-code-text);
+  /* Selection / active-item tint — replaces old hardcoded rgba(124,106,247,...) */
+  --obs-selection-sm:   color-mix(in srgb, var(--obs-accent) 10%, transparent);
+  --obs-selection:      color-mix(in srgb, var(--obs-accent) 15%, transparent);
+  --obs-selection-lg:   color-mix(in srgb, var(--obs-accent) 25%, transparent);
+  --color-obsidian-selection-sm:  var(--obs-selection-sm);
+  --color-obsidian-selection:     var(--obs-selection);
+  --color-obsidian-selection-lg:  var(--obs-selection-lg);
 
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
@@ -166,7 +173,7 @@
 
   /* Selection */
   ::selection {
-    background: rgba(124, 106, 247, 0.35);
+    background: color-mix(in srgb, var(--obs-accent) 35%, transparent);
     color: var(--obs-text);
   }
 
