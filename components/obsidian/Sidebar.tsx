@@ -1157,12 +1157,44 @@ export default function Sidebar({
               className="flex flex-col gap-1 relative"
               style={{ minHeight: "100%" }}
               onContextMenu={(e) => {
-                // Only show explorer menu if right-clicking on the background (not a child item)
                 if ((e.target as HTMLElement).closest("[data-file-item]")) return;
                 e.preventDefault();
                 setExplorerMenu({ x: e.clientX, y: e.clientY });
               }}
             >
+              {/* Vault empty state — Electron, no vault loaded yet */}
+              {onOpenVault && !vaultPath && (
+                <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                  <FolderOpen size={40} style={{ color: "var(--color-obsidian-muted-text)", opacity: 0.3 }} />
+                  <div>
+                    <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>No vault open</p>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                      Open a folder of Markdown files or create a brand-new vault.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 w-full">
+                    <button
+                      onClick={onOpenVault}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                      style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                    >
+                      <FolderOpen size={14} /> Open Folder…
+                    </button>
+                    {onCreateVault && (
+                      <button
+                        onClick={onCreateVault}
+                        className="flex items-center justify-center gap-2 w-full px-4 py-2 rounded-lg text-sm font-medium transition-colors hover:bg-white/5"
+                        style={{ color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
+                      >
+                        <Plus size={14} /> Create New Vault…
+                      </button>
+                    )}
+                  </div>
+                  <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    You can also drag &amp; drop a folder here
+                  </p>
+                </div>
+              )}
               {/* Explorer context menu */}
               {explorerMenu && (
                 <>

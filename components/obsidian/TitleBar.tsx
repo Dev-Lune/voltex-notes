@@ -3,7 +3,7 @@
 import React from "react";
 import {
   PanelLeft, PanelRight, Settings, Command, Cloud, CloudOff,
-  RefreshCw, LogIn, ChevronLeft, ChevronRight, Info
+  RefreshCw, LogIn, ChevronLeft, ChevronRight, Info, FolderOpen,
 } from "lucide-react";
 import { AppState } from "./data";
 
@@ -15,6 +15,8 @@ interface TitleBarProps {
   onOpenAuth: () => void;
   onOpenUserInfo: () => void;
   onOpenWelcome: () => void;
+  onOpenVault?: () => void;
+  vaultPath?: string;
   onNavigateBack: () => void;
   onNavigateForward: () => void;
   canGoBack?: boolean;
@@ -49,6 +51,8 @@ export default function TitleBar({
   onOpenAuth,
   onOpenUserInfo,
   onOpenWelcome,
+  onOpenVault,
+  vaultPath,
   onNavigateBack,
   onNavigateForward,
   canGoBack = true,
@@ -189,15 +193,32 @@ export default function TitleBar({
         <Settings size={15} />
       </button>
 
-      {/* Welcome / features */}
-      <button
-        onClick={onOpenWelcome}
-        className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
-        style={{ color: "var(--color-obsidian-muted-text)" }}
-        title="About Voltex Notes"
-      >
-        <Info size={15} />
-      </button>
+      {/* Vault indicator — Electron only */}
+      {onOpenVault && (
+        <button
+          onClick={onOpenVault}
+          className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-white/10 transition-colors max-w-[140px]"
+          style={{ color: vaultPath ? "var(--color-obsidian-text)" : "var(--color-obsidian-muted-text)" }}
+          title={vaultPath ? `Vault: ${vaultPath}` : "Open a vault"}
+        >
+          <FolderOpen size={13} style={{ flexShrink: 0, color: vaultPath ? "var(--color-obsidian-accent)" : undefined }} />
+          <span className="text-xs truncate hidden md:inline">
+            {vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() : "Open Vault"}
+          </span>
+        </button>
+      )}
+
+      {/* About / features */}
+      {!onOpenVault && (
+        <button
+          onClick={onOpenWelcome}
+          className="p-1.5 rounded-md hover:bg-white/10 transition-colors"
+          style={{ color: "var(--color-obsidian-muted-text)" }}
+          title="About Voltex Notes"
+        >
+          <Info size={15} />
+        </button>
+      )}
 
       {/* Auth */}
       {!user ? (

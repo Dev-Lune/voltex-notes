@@ -1510,6 +1510,11 @@ export default function ObsidianApp() {
           onOpenAuth={() => patch({ authModalOpen: true })}
           onOpenUserInfo={() => setUserInfoOpen(true)}
           onOpenWelcome={() => setWelcomeModalOpen(true)}
+          onOpenVault={isElectron() ? async () => {
+            const chosen = await vaultClient.open();
+            if (chosen) await openVaultWithPrompt(chosen);
+          } : undefined}
+          vaultPath={vaultPath ?? undefined}
           onNavigateBack={navigateBack}
           onNavigateForward={navigateForward}
           canGoBack={historyIdxRef.current > 0}
@@ -2093,124 +2098,117 @@ function WelcomeModal({ onDismiss, onSignIn, user, onOpenVault, onCreateVault, r
             </div>
           </div>
 
-          {/* Right — Account */}
+          {/* Right — Vault + Account */}
           <div
-            className="w-full md:w-72 shrink-0 p-6 md:p-8 flex flex-col justify-center"
+            className="w-full md:w-72 shrink-0 p-6 md:p-8 flex flex-col gap-4"
             style={{ background: "var(--color-obsidian-bg)" }}
           >
+            {/* ── Vault section (Electron) — always first ── */}
+            {(onOpenVault || onCreateVault) && (
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  Open a Vault
+                </p>
+                {onOpenVault && (
+                  <button
+                    onClick={onOpenVault}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-semibold mb-2 text-left transition-opacity hover:opacity-90"
+                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                  >
+                    <FolderOpen size={16} />
+                    <div>
+                      <div>Open Folder…</div>
+                      <div className="text-xs font-normal opacity-80">Open an existing Markdown folder</div>
+                    </div>
+                  </button>
+                )}
+                {onCreateVault && (
+                  <button
+                    onClick={onCreateVault}
+                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium mb-2 text-left transition-colors hover:bg-white/5"
+                    style={{ border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
+                  >
+                    <HardDrive size={16} style={{ color: "var(--color-obsidian-accent)", flexShrink: 0 }} />
+                    <div>
+                      <div>Create New Vault…</div>
+                      <div className="text-xs opacity-60">Start fresh in a new folder</div>
+                    </div>
+                  </button>
+                )}
+                {recentVaults && recentVaults.length > 0 && (
+                  <div className="mt-1">
+                    <p className="text-xs font-medium mb-1.5 px-1" style={{ color: "var(--color-obsidian-muted-text)" }}>Recent vaults</p>
+                    <div className="flex flex-col gap-0.5">
+                      {recentVaults.map((v) => (
+                        <button
+                          key={v.path}
+                          onClick={() => onOpenRecent?.(v.path)}
+                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                          style={{ color: "var(--color-obsidian-text)" }}
+                          title={v.path}
+                        >
+                          <FolderOpen size={12} style={{ color: "var(--color-obsidian-muted-text)", flexShrink: 0 }} />
+                          <span className="truncate">{v.name}</span>
+                          <span className="ml-auto shrink-0 text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                            {new Date(v.lastOpened).toLocaleDateString()}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(onOpenVault || onCreateVault) && (
+              <div className="h-px" style={{ background: "var(--color-obsidian-border)" }} />
+            )}
+
+            {/* ── Account section ── */}
             <div className="flex flex-col items-center text-center">
-              {!user && (
-                <div
-                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-                  style={{ background: "var(--color-obsidian-surface-2)" }}
-                >
-                  <Cloud size={26} style={{ color: "var(--color-obsidian-accent)" }} />
-                </div>
-              )}
               {user ? (
                 <>
                   <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold mb-3"
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold mb-2"
                     style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
                   >
                     {user.displayName.charAt(0).toUpperCase()}
                   </div>
-                  <h2 className="text-base font-bold mb-0.5" style={{ color: "var(--color-obsidian-text)" }}>
-                    {user.displayName}
-                  </h2>
-                  <p className="text-xs mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                    {user.email}
-                  </p>
-                  <div className="flex items-center gap-1.5 mb-5">
+                  <h2 className="text-sm font-bold" style={{ color: "var(--color-obsidian-text)" }}>{user.displayName}</h2>
+                  <p className="text-xs mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>{user.email}</p>
+                  <div className="flex items-center gap-1.5 mb-4">
                     <Cloud size={12} style={{ color: "#a6e3a1" }} />
                     <span className="text-xs font-medium" style={{ color: "#a6e3a1" }}>Signed in &amp; syncing</span>
                   </div>
                 </>
               ) : (
                 <>
-                  <h2 className="text-base font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
-                    Cloud Sync
-                  </h2>
-                  <p className="text-xs leading-relaxed mb-5" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                    Sign in to sync your notes across all devices in real-time. Encrypted and private.
+                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "var(--color-obsidian-surface-2)" }}>
+                    <Cloud size={20} style={{ color: "var(--color-obsidian-accent)" }} />
+                  </div>
+                  <h2 className="text-sm font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>Cloud Sync</h2>
+                  <p className="text-xs leading-relaxed mb-4" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    Sync across devices in real-time. Encrypted and private.
                   </p>
-
                   <button
                     onClick={onSignIn}
-                    className="w-full px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-3"
+                    className="w-full px-5 py-2 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-2"
                     style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
                   >
                     Sign In
                   </button>
-                  <button
-                    onClick={onDismiss}
-                    className="text-xs transition-opacity hover:opacity-80 mb-6"
-                    style={{ color: "var(--color-obsidian-muted-text)" }}
-                  >
+                  <button onClick={onDismiss} className="text-xs transition-opacity hover:opacity-80 mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
                     Continue without account
                   </button>
                 </>
               )}
-
-              <div className="w-full h-px mb-5" style={{ background: "var(--color-obsidian-border)" }} />
-
               <button
                 onClick={onDismiss}
-                className="w-full px-6 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{
-                  background: "var(--color-obsidian-surface)",
-                  color: "var(--color-obsidian-text)",
-                  border: "1px solid var(--color-obsidian-border)",
-                }}
+                className="w-full px-6 py-2 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                style={{ background: "var(--color-obsidian-surface)", color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
               >
-                Get Started
+                {onOpenVault ? "Continue to Web Version" : "Get Started"}
               </button>
-
-              {/* Electron vault section */}
-              {(onOpenVault || onCreateVault) && (
-                <>
-                  <div className="w-full h-px my-4" style={{ background: "var(--color-obsidian-border)" }} />
-                  <div className="w-full text-left">
-                    <p className="text-xs font-semibold mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                      LOCAL VAULT
-                    </p>
-                    {onOpenVault && (
-                      <button
-                        onClick={onOpenVault}
-                        className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium mb-2 text-left transition-opacity hover:opacity-90"
-                        style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
-                      >
-                        <FolderOpen size={14} /> Open Folder...
-                      </button>
-                    )}
-                    {onCreateVault && (
-                      <button
-                        onClick={onCreateVault}
-                        className="w-full flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium mb-2 text-left transition-opacity hover:opacity-90"
-                        style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
-                      >
-                        <HardDrive size={14} /> Create New Vault...
-                      </button>
-                    )}
-                    {recentVaults && recentVaults.length > 0 && (
-                      <div className="mt-2">
-                        <p className="text-xs mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>Recent</p>
-                        {recentVaults.map((v) => (
-                          <button
-                            key={v.path}
-                            onClick={() => onOpenRecent?.(v.path)}
-                            className="w-full px-3 py-1.5 rounded text-xs text-left truncate transition-opacity hover:opacity-80"
-                            style={{ color: "var(--color-obsidian-text)" }}
-                            title={v.path}
-                          >
-                            {v.name}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </>
-              )}
             </div>
           </div>
         </div>

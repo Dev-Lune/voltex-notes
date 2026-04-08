@@ -532,6 +532,26 @@ export const THEMES: ObsidianTheme[] = [
       "--obs-tag": "#fcc5e9",
     },
   },
+  {
+    id: "terminal",
+    name: "Terminal",
+    description: "Classic phosphor-green on black — for command-line power users.",
+    author: "DevLune Studios",
+    downloads: 0,
+    preview: ["#0a0a0a", "#00ff41", "#b4b4b4"],
+    vars: {
+      "--obs-bg": "#0a0a0a",
+      "--obs-surface": "#111111",
+      "--obs-surface-2": "#161616",
+      "--obs-border": "#1e1e1e",
+      "--obs-text": "#b4b4b4",
+      "--obs-muted": "#3a3a3a",
+      "--obs-accent": "#00ff41",
+      "--obs-accent-soft": "#39ff14",
+      "--obs-link": "#00cc33",
+      "--obs-tag": "#ffb700",
+    },
+  },
 ];
 // ─── AppState ────────────────────────────────────────────────────────────────
 export interface AppState {
