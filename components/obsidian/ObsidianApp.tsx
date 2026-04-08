@@ -1204,6 +1204,109 @@ export default function ObsidianApp() {
     patch({ user: null, syncStatus: "offline", settingsOpen: false });
   }, [patch]);
 
+  const handleDeleteAllData = useCallback(async () => {
+    const confirmed = confirm(
+      "Delete all notes, folders, local vault data, and synced cloud data? This cannot be undone."
+    );
+    if (!confirmed) return;
+
+    const currentState = stateRef.current;
+    const now = new Date().toISOString().split("T")[0];
+    const blankNote: Note = {
+      id: `note-${Date.now()}`,
+      title: "Untitled",
+      content: "# Untitled\n\nStart writing…",
+      tags: [],
+      folder: "root",
+      createdAt: now,
+      updatedAt: now,
+      starred: false,
+      wordCount: 0,
+      type: "markdown",
+    };
+
+    try {
+      if (currentState.user?.uid) {
+        try {
+          const { getFirebaseDb } = await import("@/lib/firebase/config");
+          const { collection, deleteDoc, doc, getDocs } = await import("firebase/firestore");
+          const db = getFirebaseDb();
+
+          if (db) {
+            const [notesSnap, foldersSnap] = await Promise.all([
+              getDocs(collection(db, "users", currentState.user.uid, "notes")),
+              getDocs(collection(db, "users", currentState.user.uid, "folders")),
+            ]);
+
+            await Promise.allSettled([
+              ...notesSnap.docs.map((docSnap) => deleteDoc(docSnap.ref)),
+              ...foldersSnap.docs.map((docSnap) => deleteDoc(docSnap.ref)),
+              deleteDoc(doc(db, "users", currentState.user.uid, "settings", "preferences")),
+            ]);
+          }
+        } catch { /* ignore */ }
+      }
+
+      if (isElectron()) {
+        const notePaths = currentState.notes
+          .map((note) => note.filePath)
+          .filter((filePath): filePath is string => Boolean(filePath));
+
+        if (notePaths.length > 0) {
+          await Promise.allSettled(notePaths.map((filePath) => fsClient.deleteFile(filePath)));
+        }
+
+        if (vaultPath) {
+          const folderPaths = currentState.folders
+            .filter((folder) => folder.id !== "root")
+            .map((folder) => `${vaultPath}/${folder.name}`)
+            .sort((a, b) => b.split(/[\\/]/).length - a.split(/[\\/]/).length);
+
+          if (folderPaths.length > 0) {
+            await Promise.allSettled(folderPaths.map((dirPath) => fsClient.rmdir(dirPath)));
+          }
+        }
+      } else if (typeof window !== "undefined") {
+        try {
+          const keysToRemove = Object.keys(localStorage).filter((key) => key.startsWith("voltex-"));
+          keysToRemove.forEach((key) => localStorage.removeItem(key));
+          if (window.indexedDB) {
+            window.indexedDB.deleteDatabase("obsidian-cloud-local");
+          }
+        } catch { /* ignore */ }
+
+        setWebVaults([]);
+        setActiveWebVaultId(null);
+      }
+
+      historyRef.current = [blankNote.id];
+      historyIdxRef.current = 0;
+      setDirtyNoteIds(new Set());
+      setSyncPromptVisible(false);
+      setMobileDrawerOpen(false);
+      setMobileNewNoteMenuOpen(false);
+      setMobileRightPanelOpen(false);
+      setMobileView("home");
+
+      setState((prev) => ({
+        ...prev,
+        notes: [blankNote],
+        folders: [{ id: "root", name: "Vault", parentId: null }],
+        activeNoteId: blankNote.id,
+        openNoteIds: [blankNote.id],
+        sidebarView: "files",
+        mainView: "editor",
+        searchQuery: "",
+        settingsOpen: false,
+        commandPaletteOpen: false,
+        marketplaceOpen: false,
+        syncedFolderIds: [],
+      }));
+    } catch {
+      alert("Failed to delete all data. Please try again.");
+    }
+  }, [vaultPath]);
+
   // Theme change handler
   const handleThemeChange = useCallback((themeId: string) => {
     patch({ activeThemeId: themeId });
@@ -1783,6 +1886,7 @@ export default function ObsidianApp() {
           onInstall={handleMarketplaceInstall}
           onUninstall={handleMarketplaceUninstall}
           onSignOut={handleSignOut}
+          onDeleteAllData={handleDeleteAllData}
           onSyncStatusChange={(s) => {
             patch({ syncStatus: s });
             if (s === "syncing" && syncServiceRef.current) {

@@ -20,6 +20,7 @@ interface SettingsModalProps {
   onInstall: (id: string) => void;
   onUninstall: (id: string) => void;
   onSignOut: () => void;
+  onDeleteAllData?: () => Promise<void> | void;
   onSyncStatusChange: (s: AppState["syncStatus"]) => void;
   onThemeChange: (id: string) => void;
   onPreferencesChange: (prefs: Partial<EditorPreferences>) => void;
@@ -1336,53 +1337,68 @@ function HotkeysTab() {
 
 // ─── Account Tab ──────────────────────────────────────────────────────────────
 
-function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSignOut: () => void; onImportNotes?: (files: { title: string; content: string; folder?: string }[]) => void }) {
-  const { user, notes } = state;
-  if (!user) {
-    return (
-      <div className="py-8 text-center">
-        <p className="text-sm" style={{ color: "var(--color-obsidian-muted-text)" }}>
-          Not signed in. Sign in to enable cloud sync.
-        </p>
-      </div>
-    );
-  }
-
+function AccountTab({
+  state,
+  onSignOut,
+  onImportNotes,
+  onDeleteAllData,
+}: {
+  state: AppState;
+  onSignOut: () => void;
+  onImportNotes?: (files: { title: string; content: string; folder?: string }[]) => void;
+  onDeleteAllData?: () => Promise<void> | void;
+}) {
+  const { user, notes, folders, syncStatus } = state;
+  const [deletingAll, setDeletingAll] = useState(false);
   const storageKb = notes.reduce((acc, n) => acc + n.content.length, 0) / 1024;
 
   return (
     <div className="flex flex-col gap-5">
-      <div
-        className="p-4 rounded-xl flex items-center gap-4"
-        style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}
-      >
+      {user ? (
         <div
-          className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
-          style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+          className="p-4 rounded-xl flex items-center gap-4"
+          style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}
         >
-          {user.displayName.charAt(0).toUpperCase()}
-        </div>
-        <div>
-          <p className="text-base font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
-            {user.displayName}
-          </p>
-          <p className="text-sm" style={{ color: "var(--color-obsidian-muted-text)" }}>
-            {user.email}
-          </p>
-          <div className="flex items-center gap-1 mt-1">
-            <Star size={11} style={{ color: "#f9e2af" }} />
-            <span className="text-xs" style={{ color: "#f9e2af" }}>
-              Pro Plan
-            </span>
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center text-xl font-bold shrink-0"
+            style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+          >
+            {(user.displayName || user.email || "U").charAt(0).toUpperCase()}
+          </div>
+          <div>
+            <p className="text-base font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
+              {user.displayName}
+            </p>
+            <p className="text-sm" style={{ color: "var(--color-obsidian-muted-text)" }}>
+              {user.email}
+            </p>
+            <div className="flex items-center gap-1 mt-1">
+              <Star size={11} style={{ color: "#f9e2af" }} />
+              <span className="text-xs" style={{ color: "#f9e2af" }}>
+                Pro Plan
+              </span>
+            </div>
           </div>
         </div>
-      </div>
+      ) : (
+        <div
+          className="p-4 rounded-xl"
+          style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}
+        >
+          <p className="text-sm font-medium" style={{ color: "var(--color-obsidian-text)" }}>
+            Local vault only
+          </p>
+          <p className="text-xs mt-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            You are not signed in. Your notes are stored only on this device until you enable cloud sync.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {[
           { label: "Notes", value: String(notes.length) },
-          { label: "Storage", value: `${storageKb.toFixed(1)} KB` },
-          { label: "Sync events", value: "1,284" },
+          { label: "Folders", value: String(folders.filter((folder) => folder.id !== "root").length) },
+          { label: "Sync", value: user ? syncStatus[0].toUpperCase() + syncStatus.slice(1) : "Local only" },
         ].map(({ label, value }) => (
           <div
             key={label}
@@ -1457,22 +1473,17 @@ function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSi
           onClick={() => {
             const input = document.createElement("input");
             input.type = "file";
-            // webkitdirectory enables folder selection
             input.setAttribute("webkitdirectory", "");
             input.setAttribute("directory", "");
             input.onchange = async () => {
               if (!input.files?.length) return;
               const imported: { title: string; content: string; folder?: string }[] = [];
               for (const file of Array.from(input.files)) {
-                // Only import markdown/text files
                 if (!file.name.match(/\.(md|markdown|txt)$/i)) continue;
                 const content = await file.text();
                 const title = file.name.replace(/\.(md|markdown|txt)$/i, "");
-                // webkitRelativePath gives "FolderName/subfolder/file.md"
                 const relPath = (file as File & { webkitRelativePath?: string }).webkitRelativePath || "";
                 const parts = relPath.split("/");
-                // If file is in a subfolder (not the root of the selected folder), use the subfolder name
-                // parts[0] = selected folder name, parts[1..n-1] = subfolders, parts[n] = filename
                 const folderName = parts.length > 2 ? parts.slice(1, -1).join("/") : undefined;
                 imported.push({ title, content, folder: folderName });
               }
@@ -1489,17 +1500,55 @@ function AccountTab({ state, onSignOut, onImportNotes }: { state: AppState; onSi
           <FolderOpen size={14} />
           Import vault folder
         </button>
+        {user && (
+          <button
+            onClick={onSignOut}
+            className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm hover:opacity-80 transition-opacity"
+            style={{
+              background: "rgba(243,139,168,0.1)",
+              color: "#f38ba8",
+              border: "1px solid rgba(243,139,168,0.3)",
+            }}
+          >
+            <Trash2 size={14} />
+            Sign out
+          </button>
+        )}
+      </div>
+
+      <div
+        className="p-4 rounded-xl"
+        style={{
+          background: "rgba(243,139,168,0.06)",
+          border: "1px solid rgba(243,139,168,0.28)",
+        }}
+      >
+        <p className="text-sm font-semibold" style={{ color: "#f38ba8" }}>
+          Danger Zone
+        </p>
+        <p className="text-xs mt-1 mb-3" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          Permanently delete all notes, folders, local vault cache, and synced cloud data for this workspace.
+        </p>
         <button
-          onClick={onSignOut}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm hover:opacity-80 transition-opacity"
+          onClick={async () => {
+            if (!onDeleteAllData || deletingAll) return;
+            try {
+              setDeletingAll(true);
+              await onDeleteAllData();
+            } finally {
+              setDeletingAll(false);
+            }
+          }}
+          disabled={!onDeleteAllData || deletingAll}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm transition-opacity disabled:opacity-60 disabled:cursor-not-allowed"
           style={{
-            background: "rgba(243,139,168,0.1)",
+            background: "rgba(243,139,168,0.12)",
             color: "#f38ba8",
-            border: "1px solid rgba(243,139,168,0.3)",
+            border: "1px solid rgba(243,139,168,0.35)",
           }}
         >
-          <Trash2 size={14} />
-          Sign out
+          {deletingAll ? <RefreshCw size={14} className="animate-spin" /> : <Trash2 size={14} />}
+          {deletingAll ? "Deleting data…" : "Delete all data"}
         </button>
       </div>
     </div>
@@ -1514,6 +1563,7 @@ export default function SettingsModal({
   onInstall,
   onUninstall,
   onSignOut,
+  onDeleteAllData,
   onSyncStatusChange,
   onThemeChange,
   onPreferencesChange,
@@ -1636,7 +1686,12 @@ export default function SettingsModal({
             {activeTab === "hotkeys" && <HotkeysTab />}
 
             {activeTab === "account" && (
-              <AccountTab state={state} onSignOut={onSignOut} onImportNotes={onImportNotes} />
+              <AccountTab
+                state={state}
+                onSignOut={onSignOut}
+                onImportNotes={onImportNotes}
+                onDeleteAllData={onDeleteAllData}
+              />
             )}
           </div>
         </div>

@@ -1,13 +1,12 @@
 "use client";
 
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import {
-  Plus, FileText, Square, Type, Trash2, Move, ZoomIn, ZoomOut,
-  Maximize2, GripVertical, ArrowRight, Palette, X, Link2
-} from "lucide-react";
+import { FileText, Square, Type, ZoomIn, ZoomOut, Maximize2, GripVertical, X } from "lucide-react";
 import { Note } from "./data";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
+
+type CanvasAnchorSide = "top" | "right" | "bottom" | "left";
 
 interface CanvasCard {
   id: string;
@@ -25,8 +24,8 @@ interface CanvasConnection {
   id: string;
   fromId: string;
   toId: string;
-  fromSide?: "top" | "right" | "bottom" | "left";
-  toSide?: "top" | "right" | "bottom" | "left";
+  fromSide?: CanvasAnchorSide;
+  toSide?: CanvasAnchorSide;
   color?: string;
 }
 
@@ -55,6 +54,15 @@ interface CanvasViewProps {
   onChange: (content: string) => void;
   onNoteClick?: (id: string) => void;
 }
+
+interface PendingConnection {
+  fromId: string;
+  fromSide: CanvasAnchorSide;
+  startX: number;
+  startY: number;
+}
+
+const ANCHOR_SIDES: CanvasAnchorSide[] = ["top", "right", "bottom", "left"];
 
 const COLORS = [
   "#cdd6f4", "#89b4fa", "#a6e3a1", "#f9e2af", "#fab387",
@@ -99,7 +107,7 @@ function serializeCanvas(canvas: CanvasState): string {
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
-function getAnchorPoint(card: CanvasCard, side: "top" | "right" | "bottom" | "left") {
+function getAnchorPoint(card: CanvasCard, side: CanvasAnchorSide) {
   switch (side) {
     case "top":
       return { x: card.x + card.width / 2, y: card.y };
@@ -110,6 +118,25 @@ function getAnchorPoint(card: CanvasCard, side: "top" | "right" | "bottom" | "le
     case "right":
       return { x: card.x + card.width, y: card.y + card.height / 2 };
   }
+}
+
+function getCardAnchorScreenPoint(
+  card: CanvasCard,
+  side: CanvasAnchorSide,
+  zoom: number,
+  panX: number,
+  panY: number
+) {
+  return getAnchorPoint(
+    {
+      ...card,
+      x: card.x * zoom + panX,
+      y: card.y * zoom + panY,
+      width: card.width * zoom,
+      height: card.height * zoom,
+    },
+    side
+  );
 }
 
 function drawConnection(
@@ -161,6 +188,10 @@ function CanvasCardComponent({
   onDelete,
   onNoteClick,
   note,
+  showAnchors,
+  isConnectionSource,
+  onAnchorStart,
+  onAnchorEnd,
 }: {
   card: CanvasCard;
   isSelected: boolean;
@@ -172,6 +203,10 @@ function CanvasCardComponent({
   onDelete: () => void;
   onNoteClick?: (id: string) => void;
   note?: Note;
+  showAnchors: boolean;
+  isConnectionSource: boolean;
+  onAnchorStart: (side: CanvasAnchorSide, e: React.MouseEvent) => void;
+  onAnchorEnd: (side: CanvasAnchorSide, e: React.MouseEvent) => void;
 }) {
   const [editing, setEditing] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -196,7 +231,7 @@ function CanvasCardComponent({
 
   return (
     <div
-      className="absolute rounded-xl shadow-xl overflow-hidden transition-shadow"
+      className="absolute rounded-xl shadow-xl overflow-visible transition-shadow"
       style={{
         left: card.x * zoom,
         top: card.y * zoom,
@@ -206,16 +241,16 @@ function CanvasCardComponent({
         border: isSelected
           ? "2px solid var(--color-obsidian-accent)"
           : "1px solid var(--color-obsidian-border)",
-        boxShadow: isSelected ? "0 0 0 3px rgba(124,106,247,0.2)" : undefined,
-        zIndex: isSelected ? 10 : 1,
+        boxShadow: isSelected ? "0 0 0 3px color-mix(in srgb, var(--color-obsidian-accent) 22%, transparent)" : undefined,
+        zIndex: isSelected || isConnectionSource ? 12 : 1,
       }}
       onClick={(e) => { e.stopPropagation(); onSelect(); }}
-      onMouseDown={onDragStart}
       onDoubleClick={handleDoubleClick}
     >
       {/* Header */}
       <div
         className="flex items-center gap-2 px-3 py-2 cursor-move"
+        onMouseDown={onDragStart}
         style={{
           borderBottom: "1px solid var(--color-obsidian-border)",
           background: card.color ? `${card.color}15` : "var(--color-obsidian-bg)",
@@ -303,21 +338,29 @@ function CanvasCardComponent({
       )}
 
       {/* Connection anchors */}
-      {isSelected && (
+      {showAnchors && (
         <>
-          {(["top", "right", "bottom", "left"] as const).map((side) => {
-            const pos = getAnchorPoint({ ...card, x: 0, y: 0, width: card.width * zoom, height: card.height * zoom }, side);
+          {ANCHOR_SIDES.map((side) => {
+            const pos = getAnchorPoint(
+              { ...card, x: 0, y: 0, width: card.width * zoom, height: card.height * zoom },
+              side
+            );
             return (
-              <div
+              <button
                 key={side}
-                className="absolute w-3 h-3 rounded-full cursor-crosshair"
+                type="button"
+                className="absolute w-4 h-4 rounded-full cursor-crosshair transition-transform hover:scale-110"
                 style={{
-                  left: pos.x - 6,
-                  top: pos.y - 6,
-                  background: "var(--color-obsidian-accent)",
-                  border: "2px solid #fff",
+                  left: pos.x - 8,
+                  top: pos.y - 8,
+                  background: isConnectionSource ? "var(--color-obsidian-accent)" : "var(--color-obsidian-surface)",
+                  border: `2px solid ${card.color || "var(--color-obsidian-accent)"}`,
+                  boxShadow: "0 0 0 2px var(--color-obsidian-bg)",
                 }}
-                title="Drag to connect"
+                onMouseDown={(e) => onAnchorStart(side, e)}
+                onMouseUp={(e) => onAnchorEnd(side, e)}
+                onClick={(e) => e.stopPropagation()}
+                title={`Connect from ${side}`}
               />
             );
           })}
@@ -411,6 +454,17 @@ function CanvasToolbar({
   onColorChange: (color: string) => void;
 }) {
   const [showColors, setShowColors] = useState(false);
+  const normalizedSelectedColor = selectedColor.startsWith("#") && selectedColor.length >= 7
+    ? selectedColor.slice(0, 7)
+    : selectedColor;
+
+  useEffect(() => {
+    if (!showColors) return;
+
+    const handlePointerDown = () => setShowColors(false);
+    window.addEventListener("pointerdown", handlePointerDown);
+    return () => window.removeEventListener("pointerdown", handlePointerDown);
+  }, [showColors]);
 
   return (
     <div
@@ -419,11 +473,13 @@ function CanvasToolbar({
         background: "var(--color-obsidian-surface)",
         border: "1px solid var(--color-obsidian-border)",
       }}
+      onMouseDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
     >
       {/* Add buttons */}
       <button
-        onClick={() => onAddCard("note")}
-        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onAddCard("note"); }}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
         style={{ color: "var(--color-obsidian-text)" }}
         title="Add note card"
       >
@@ -431,8 +487,8 @@ function CanvasToolbar({
         <span className="hidden sm:inline">Note</span>
       </button>
       <button
-        onClick={() => onAddCard("text")}
-        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onAddCard("text"); }}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
         style={{ color: "var(--color-obsidian-text)" }}
         title="Add text card"
       >
@@ -440,8 +496,8 @@ function CanvasToolbar({
         <span className="hidden sm:inline">Text</span>
       </button>
       <button
-        onClick={onAddGroup}
-        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onAddGroup(); }}
+        className="flex items-center gap-1 px-2 py-1 rounded-lg text-xs transition-colors"
         style={{ color: "var(--color-obsidian-text)" }}
         title="Add group"
       >
@@ -452,33 +508,45 @@ function CanvasToolbar({
       <div className="w-px h-5 mx-1" style={{ background: "var(--color-obsidian-border)" }} />
 
       {/* Color picker */}
-      <div className="relative">
+      <div className="relative" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
         <button
-          onClick={() => setShowColors((v) => !v)}
-          className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
-          title="Color"
+          onClick={(e) => {
+            e.stopPropagation();
+            setShowColors((value) => !value);
+          }}
+          className="p-1.5 rounded-lg transition-colors"
+          title="Change selected item color"
         >
           <div
             className="w-4 h-4 rounded"
-            style={{ background: selectedColor, border: "1px solid rgba(255,255,255,0.2)" }}
+            style={{
+              background: normalizedSelectedColor,
+              border: "1px solid color-mix(in srgb, var(--color-obsidian-border) 80%, white 20%)",
+            }}
           />
         </button>
         {showColors && (
           <div
-            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-lg shadow-xl grid grid-cols-5 gap-1"
+            className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2 p-2 rounded-lg shadow-xl grid grid-cols-5 gap-1 z-30"
             style={{
               background: "var(--color-obsidian-surface)",
               border: "1px solid var(--color-obsidian-border)",
             }}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
           >
             {COLORS.map((c) => (
               <button
                 key={c}
-                onClick={() => { onColorChange(c); setShowColors(false); }}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onColorChange(c);
+                  setShowColors(false);
+                }}
                 className="w-5 h-5 rounded transition-transform hover:scale-110"
                 style={{
                   background: c,
-                  border: selectedColor === c ? "2px solid #fff" : "1px solid rgba(255,255,255,0.1)",
+                  border: normalizedSelectedColor === c ? "2px solid #fff" : "1px solid rgba(255,255,255,0.1)",
                 }}
               />
             ))}
@@ -490,8 +558,8 @@ function CanvasToolbar({
 
       {/* Zoom controls */}
       <button
-        onClick={onZoomOut}
-        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onZoomOut(); }}
+        className="p-1.5 rounded-lg transition-colors"
         style={{ color: "var(--color-obsidian-muted-text)" }}
         title="Zoom out"
       >
@@ -504,16 +572,16 @@ function CanvasToolbar({
         {Math.round(zoom * 100)}%
       </span>
       <button
-        onClick={onZoomIn}
-        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onZoomIn(); }}
+        className="p-1.5 rounded-lg transition-colors"
         style={{ color: "var(--color-obsidian-muted-text)" }}
         title="Zoom in"
       >
         <ZoomIn size={14} />
       </button>
       <button
-        onClick={onFitView}
-        className="p-1.5 rounded-lg hover:bg-white/5 transition-colors"
+        onClick={(e) => { e.stopPropagation(); onFitView(); }}
+        className="p-1.5 rounded-lg transition-colors"
         style={{ color: "var(--color-obsidian-muted-text)" }}
         title="Fit view"
       >
@@ -531,10 +599,19 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
   const [selectedType, setSelectedType] = useState<"card" | "group" | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; objX: number; objY: number } | null>(null);
   const [activeColor, setActiveColor] = useState(COLORS[0]);
+  const [connecting, setConnecting] = useState<PendingConnection | null>(null);
+  const [pointerPosition, setPointerPosition] = useState({ x: 0, y: 0 });
   const containerRef = useRef<HTMLDivElement>(null);
   const connectionsCanvasRef = useRef<HTMLCanvasElement>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const noteIdRef = useRef(note.id);
+
+  const selectedCard = selectedType === "card"
+    ? canvas.cards.find((card) => card.id === selectedId)
+    : undefined;
+  const selectedGroup = selectedType === "group"
+    ? canvas.groups.find((group) => group.id === selectedId)
+    : undefined;
 
   // Reload canvas data when switching to a different canvas note
   useEffect(() => {
@@ -543,6 +620,7 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
       setCanvas(parseCanvasContent(note.content));
       setSelectedId(null);
       setSelectedType(null);
+      setConnecting(null);
     }
   }, [note.id, note.content]);
 
@@ -563,7 +641,7 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
     });
   }, [saveCanvas]);
 
-  // Draw connections
+  // Draw saved + in-progress connections
   useEffect(() => {
     const cnv = connectionsCanvasRef.current;
     const container = containerRef.current;
@@ -583,22 +661,38 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
     ctx.clearRect(0, 0, rect.width, rect.height);
 
     canvas.connections.forEach((conn) => {
-      const fromCard = canvas.cards.find((c) => c.id === conn.fromId);
-      const toCard = canvas.cards.find((c) => c.id === conn.toId);
+      const fromCard = canvas.cards.find((card) => card.id === conn.fromId);
+      const toCard = canvas.cards.find((card) => card.id === conn.toId);
       if (!fromCard || !toCard) return;
 
-      const fromPos = getAnchorPoint(
-        { ...fromCard, x: fromCard.x * canvas.zoom, y: fromCard.y * canvas.zoom, width: fromCard.width * canvas.zoom, height: fromCard.height * canvas.zoom },
-        conn.fromSide || "right"
+      const fromPos = getCardAnchorScreenPoint(
+        fromCard,
+        conn.fromSide || "right",
+        canvas.zoom,
+        canvas.panX,
+        canvas.panY
       );
-      const toPos = getAnchorPoint(
-        { ...toCard, x: toCard.x * canvas.zoom, y: toCard.y * canvas.zoom, width: toCard.width * canvas.zoom, height: toCard.height * canvas.zoom },
-        conn.toSide || "left"
+      const toPos = getCardAnchorScreenPoint(
+        toCard,
+        conn.toSide || "left",
+        canvas.zoom,
+        canvas.panX,
+        canvas.panY
       );
 
       drawConnection(ctx, fromPos, toPos, conn.color);
     });
-  }, [canvas]);
+
+    if (connecting) {
+      drawConnection(
+        ctx,
+        { x: connecting.startX, y: connecting.startY },
+        pointerPosition,
+        activeColor,
+        true
+      );
+    }
+  }, [canvas, connecting, pointerPosition, activeColor]);
 
   // Pan handling
   const handlePan = useCallback((e: React.MouseEvent) => {
@@ -631,6 +725,7 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
       : canvas.groups.find((g) => g.id === id);
     if (!obj) return;
 
+    setConnecting(null);
     setDragging({
       id,
       startX: e.clientX,
@@ -640,6 +735,63 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
     });
     setSelectedId(id);
     setSelectedType(type);
+  };
+
+  const handleCanvasMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!connecting || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    setPointerPosition({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+  }, [connecting]);
+
+  const beginConnection = (cardId: string, side: CanvasAnchorSide, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const card = canvas.cards.find((item) => item.id === cardId);
+    if (!card) return;
+
+    const start = getCardAnchorScreenPoint(card, side, canvas.zoom, canvas.panX, canvas.panY);
+    setConnecting({
+      fromId: cardId,
+      fromSide: side,
+      startX: start.x,
+      startY: start.y,
+    });
+    setPointerPosition(start);
+    setSelectedId(cardId);
+    setSelectedType("card");
+  };
+
+  const completeConnection = (toId: string, toSide: CanvasAnchorSide, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!connecting) return;
+
+    updateCanvas((prev) => {
+      if (connecting.fromId === toId) return prev;
+
+      const exists = prev.connections.some((conn) =>
+        conn.fromId === connecting.fromId
+        && conn.toId === toId
+        && conn.fromSide === connecting.fromSide
+        && conn.toSide === toSide
+      );
+      if (exists) return prev;
+
+      return {
+        ...prev,
+        connections: [
+          ...prev.connections,
+          {
+            id: `conn-${Date.now()}`,
+            fromId: connecting.fromId,
+            toId,
+            fromSide: connecting.fromSide,
+            toSide,
+            color: activeColor,
+          },
+        ],
+      };
+    });
+
+    setConnecting(null);
   };
 
   useEffect(() => {
@@ -678,7 +830,15 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
     };
-  }, [dragging, canvas.zoom, selectedType]);
+  }, [dragging, canvas.zoom, selectedType, saveCanvas]);
+
+  useEffect(() => {
+    if (!connecting) return;
+
+    const handleMouseUp = () => setConnecting(null);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => window.removeEventListener("mouseup", handleMouseUp);
+  }, [connecting]);
 
   // Zoom
   const handleWheel = useCallback((e: React.WheelEvent) => {
@@ -725,6 +885,30 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
     setSelectedType("group");
   };
 
+  const handleColorChange = (color: string) => {
+    setActiveColor(color);
+
+    if (!selectedId || !selectedType) return;
+
+    updateCanvas((prev) => {
+      if (selectedType === "card") {
+        return {
+          ...prev,
+          cards: prev.cards.map((card) => (
+            card.id === selectedId ? { ...card, color } : card
+          )),
+        };
+      }
+
+      return {
+        ...prev,
+        groups: prev.groups.map((group) => (
+          group.id === selectedId ? { ...group, color: `${color}20` } : group
+        )),
+      };
+    });
+  };
+
   // Delete selected
   const deleteSelected = () => {
     if (!selectedId) return;
@@ -755,6 +939,7 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
       if (e.key === "Escape") {
         setSelectedId(null);
         setSelectedType(null);
+        setConnecting(null);
       }
     };
     window.addEventListener("keydown", handler);
@@ -767,16 +952,21 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
       className="relative w-full h-full overflow-hidden"
       style={{ background: "var(--color-obsidian-bg)" }}
       onMouseDown={handlePan}
+      onMouseMove={handleCanvasMouseMove}
       onWheel={handleWheel}
-      onClick={() => { setSelectedId(null); setSelectedType(null); }}
+      onClick={() => {
+        setSelectedId(null);
+        setSelectedType(null);
+        setConnecting(null);
+      }}
     >
       {/* Grid background */}
       <div
         className="absolute inset-0 pointer-events-none"
         style={{
           backgroundImage: `
-            linear-gradient(rgba(124,106,247,0.05) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(124,106,247,0.05) 1px, transparent 1px)
+            linear-gradient(color-mix(in srgb, var(--color-obsidian-accent) 12%, transparent) 1px, transparent 1px),
+            linear-gradient(90deg, color-mix(in srgb, var(--color-obsidian-accent) 12%, transparent) 1px, transparent 1px)
           `,
           backgroundSize: `${20 * canvas.zoom}px ${20 * canvas.zoom}px`,
           backgroundPosition: `${canvas.panX}px ${canvas.panY}px`,
@@ -838,6 +1028,10 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
             onDelete={deleteSelected}
             onNoteClick={onNoteClick}
             note={card.noteId ? allNotes.find((n) => n.id === card.noteId) : undefined}
+            showAnchors={selectedId === card.id || Boolean(connecting)}
+            isConnectionSource={connecting?.fromId === card.id}
+            onAnchorStart={(side, e) => beginConnection(card.id, side, e)}
+            onAnchorEnd={(side, e) => completeConnection(card.id, side, e)}
           />
         ))}
       </div>
@@ -850,20 +1044,22 @@ export default function CanvasView({ note, allNotes, onChange, onNoteClick }: Ca
         onFitView={() => updateCanvas((prev) => ({ ...prev, zoom: 1, panX: 0, panY: 0 }))}
         onAddCard={addCard}
         onAddGroup={addGroup}
-        selectedColor={activeColor}
-        onColorChange={setActiveColor}
+        selectedColor={selectedCard?.color || selectedGroup?.color || activeColor}
+        onColorChange={handleColorChange}
       />
 
       <div
-        className="absolute top-4 left-4 p-3 rounded-xl text-xs max-w-xs"
+        className="absolute top-4 left-4 p-3 rounded-xl text-xs max-w-xs z-10"
         style={{
-          background: "rgba(0,0,0,0.6)",
+          background: "color-mix(in srgb, var(--color-obsidian-surface) 90%, transparent)",
+          border: "1px solid var(--color-obsidian-border)",
           backdropFilter: "blur(8px)",
           color: "var(--color-obsidian-muted-text)",
         }}
+        onMouseDown={(e) => e.stopPropagation()}
       >
         <p className="font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>{note.title}</p>
-        <p>Drag to pan. Scroll to zoom. Click cards to select. Double-click to edit.</p>
+        <p>Drag to pan. Scroll to zoom. Drag from the side dots to connect cards. Double-click to edit.</p>
       </div>
     </div>
   );
