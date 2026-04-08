@@ -1,20 +1,6 @@
-# Voltex Notes — https://voltex.devlune.in
-# Sitemap & Crawling Rules
-
 User-agent: *
 Allow: /
 Disallow: /api/
 
-# Sitemap
 Sitemap: https://voltex.devlune.in/sitemap.xml
-
-# Crawl-delay (optional, respected by some bots)
-Crawl-delay: 1
-
-# Google-specific
-User-agent: Googlebot
-Allow: /
-
-# Bing-specific
-User-agent: Bingbot
-Allow: /
+Host: voltex.devlune.in
