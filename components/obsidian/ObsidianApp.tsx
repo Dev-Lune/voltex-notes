@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
+import dynamic from "next/dynamic";
 import {
   AppState, Note, Folder, SAMPLE_NOTES, SAMPLE_FOLDERS,
   countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme,
@@ -9,14 +10,17 @@ import {
 import TitleBar from "./TitleBar";
 import Sidebar from "./Sidebar";
 import Editor from "./Editor";
-import GraphView from "./GraphView";
 import RightPanel from "./RightPanel";
 import CommandPalette from "./CommandPalette";
 import AuthModal from "./AuthModal";
-import SettingsModal from "./SettingsModal";
-import CanvasView from "./CanvasView";
-import MarketplacePanel from "./MarketplacePanel";
 import { SAMPLE_SNIPPETS } from "../../lib/marketplace/data";
+
+// Heavy components — lazy-loaded to reduce initial bundle
+const GraphView = dynamic(() => import("./GraphView"), { ssr: false });
+const CanvasView = dynamic(() => import("./CanvasView"), { ssr: false });
+const SettingsModal = dynamic(() => import("./SettingsModal"), { ssr: false });
+const MarketplacePanel = dynamic(() => import("./MarketplacePanel"), { ssr: false });
+
 import {
   MobileHeader,
   MobileBottomNav,
@@ -659,11 +663,12 @@ export default function ObsidianApp() {
         const newOpen = alreadyOpen
           ? prev.openNoteIds
           : [...prev.openNoteIds, id];
+        const note = prev.notes.find((n) => n.id === id);
         return {
           ...prev,
           activeNoteId: id,
           openNoteIds: newOpen,
-          mainView: "editor",
+          mainView: note?.type === "canvas" ? "canvas" : "editor",
         };
       });
       // Update history
@@ -723,9 +728,11 @@ export default function ObsidianApp() {
       ? "Untitled Drawing"
       : type === "kanban"
       ? "Untitled Board"
+      : type === "canvas"
+      ? "Untitled Canvas"
       : "Untitled";
 
-    const defaultFolder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : "root";
+    const defaultFolder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : type === "canvas" ? "canvases" : "root";
     const defaultKanbanContent = JSON.stringify({
       columns: [
         { id: "col-todo", label: "To Do", color: "#89b4fa", cards: [] },
@@ -733,10 +740,15 @@ export default function ObsidianApp() {
         { id: "col-done", label: "Done", color: "#a6e3a1", cards: [] },
       ],
     });
+    const defaultCanvasContent = JSON.stringify({
+      cards: [],
+      connections: [],
+      groups: [],
+    });
     const newNote: Note = {
       id,
       title,
-      content: type === "markdown" ? `# ${title}\n\nStart writing…` : type === "kanban" ? defaultKanbanContent : "",
+      content: type === "markdown" ? `# ${title}\n\nStart writing…` : type === "kanban" ? defaultKanbanContent : type === "canvas" ? defaultCanvasContent : "",
       tags: [],
       folder: defaultFolder,
       createdAt: now,
@@ -748,11 +760,11 @@ export default function ObsidianApp() {
 
     let finalNote: Note = newNote;
     setState((prev) => {
-      const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : (prev.preferences.defaultNoteLocation || "root");
+      const folder = type === "daily" ? "daily" : type === "drawing" ? "drawings" : type === "canvas" ? "canvases" : (prev.preferences.defaultNoteLocation || "root");
       finalNote = { ...newNote, folder };
 
       // Ensure the target folder exists so the note is visible in the sidebar
-      const folderNames: Record<string, string> = { daily: "Daily Notes", drawings: "Drawings" };
+      const folderNames: Record<string, string> = { daily: "Daily Notes", drawings: "Drawings", canvases: "Canvases" };
       const folderExists = prev.folders.some((f) => f.id === folder);
       const updatedFolders = folderExists
         ? prev.folders
@@ -764,7 +776,7 @@ export default function ObsidianApp() {
         notes: [...prev.notes, finalNote],
         activeNoteId: id,
         openNoteIds: [...prev.openNoteIds, id],
-        mainView: "editor",
+        mainView: type === "canvas" ? "canvas" : "editor",
       };
     });
     pushNoteToFirestore(finalNote);
@@ -1361,7 +1373,7 @@ export default function ObsidianApp() {
       }
       if (ctrl && e.key === "k") {
         e.preventDefault();
-        patch({ mainView: "canvas" });
+        patch({ mainView: "canvas", sidebarView: "canvas" });
       }
       if (ctrl && e.key === "f") {
         e.preventDefault();
@@ -1521,6 +1533,13 @@ export default function ObsidianApp() {
               activeWebVaultId={!isElectron() ? activeWebVaultId : undefined}
               onCreateWebVault={!isElectron() ? createWebVault : undefined}
               onSwitchWebVault={!isElectron() ? switchWebVault : undefined}
+              onOpenVault={isElectron() ? async () => {
+                const chosen = await vaultClient.open();
+                if (chosen) await openVaultWithPrompt(chosen);
+              } : undefined}
+              onCreateVault={isElectron() ? () => {
+                setVaultNameInput({ parentPath: "" });
+              } : undefined}
             />
           </div>
         )}
@@ -1544,12 +1563,41 @@ export default function ObsidianApp() {
               onNoteClick={(id) => openNote(id)}
               isMobile={isMobile}
             />
-          ) : state.mainView === "canvas" ? (
-            <CanvasView
-              notes={state.notes}
-              onNoteClick={(id) => openNote(id)}
-            />
-          ) : (
+          ) : state.mainView === "canvas" ? (() => {
+            const canvasNote = state.notes.find((n) => n.id === state.activeNoteId && n.type === "canvas");
+            if (!canvasNote) {
+              return (
+                <div className="flex flex-col items-center justify-center h-full gap-4" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  <p className="text-sm">Select or create a canvas to get started</p>
+                  <button
+                    onClick={() => createNote("canvas")}
+                    className="px-4 py-2 rounded-lg text-xs font-medium"
+                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                  >
+                    New Canvas
+                  </button>
+                </div>
+              );
+            }
+            return (
+              <CanvasView
+                note={canvasNote}
+                allNotes={state.notes}
+                onChange={(content) => {
+                  setState((prev) => ({
+                    ...prev,
+                    notes: prev.notes.map((n) =>
+                      n.id === canvasNote.id
+                        ? { ...n, content, updatedAt: new Date().toISOString() }
+                        : n
+                    ),
+                  }));
+                  pushNoteToFirestore({ ...canvasNote, content, updatedAt: new Date().toISOString() });
+                }}
+                onNoteClick={(id) => openNote(id)}
+              />
+            );
+          })() : (
             <GraphView
               notes={state.notes}
               activeNoteId={state.activeNoteId}
@@ -1628,6 +1676,14 @@ export default function ObsidianApp() {
           activeWebVaultId={!isElectron() ? activeWebVaultId : undefined}
           onCreateWebVault={!isElectron() ? createWebVault : undefined}
           onSwitchWebVault={!isElectron() ? switchWebVault : undefined}
+          onOpenVault={isElectron() ? async () => {
+            const chosen = await vaultClient.open();
+            if (chosen) { setMobileDrawerOpen(false); await openVaultWithPrompt(chosen); }
+          } : undefined}
+          onCreateVault={isElectron() ? () => {
+            setMobileDrawerOpen(false);
+            setVaultNameInput({ parentPath: "" });
+          } : undefined}
         />
       </MobileDrawer>
 
@@ -1782,6 +1838,7 @@ export default function ObsidianApp() {
       {/* Welcome Modal */}
       {welcomeModalOpen && (
         <WelcomeModal
+          user={state.user}
           onDismiss={() => {
             try { localStorage.setItem("voltex-welcome-dismissed", "true"); } catch { /* ignore */ }
             setWelcomeModalOpen(false);
@@ -1961,12 +2018,13 @@ const WELCOME_FEATURES = [
 interface WelcomeModalProps {
   onDismiss: () => void;
   onSignIn: () => void;
+  user?: AppState["user"];
   onOpenVault?: () => void;
   onCreateVault?: () => void;
   recentVaults?: Array<{ path: string; name: string; lastOpened: number }>;
   onOpenRecent?: (vaultPath: string) => void;
 }
-function WelcomeModal({ onDismiss, onSignIn, onOpenVault, onCreateVault, recentVaults, onOpenRecent }: WelcomeModalProps) {
+function WelcomeModal({ onDismiss, onSignIn, user, onOpenVault, onCreateVault, recentVaults, onOpenRecent }: WelcomeModalProps) {
   return (
     <div
       className="fixed inset-0 z-[200] flex items-center justify-center"
@@ -2053,33 +2111,58 @@ function WelcomeModal({ onDismiss, onSignIn, onOpenVault, onCreateVault, recentV
             style={{ background: "var(--color-obsidian-bg)" }}
           >
             <div className="flex flex-col items-center text-center">
-              <div
-                className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
-                style={{ background: "var(--color-obsidian-surface-2)" }}
-              >
-                <Cloud size={26} style={{ color: "var(--color-obsidian-accent)" }} />
-              </div>
-              <h2 className="text-base font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
-                Cloud Sync
-              </h2>
-              <p className="text-xs leading-relaxed mb-5" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                Sign in to sync your notes across all devices in real-time. Encrypted and private.
-              </p>
+              {!user && (
+                <div
+                  className="w-14 h-14 rounded-2xl flex items-center justify-center mb-4"
+                  style={{ background: "var(--color-obsidian-surface-2)" }}
+                >
+                  <Cloud size={26} style={{ color: "var(--color-obsidian-accent)" }} />
+                </div>
+              )}
+              {user ? (
+                <>
+                  <div
+                    className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold mb-3"
+                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                  >
+                    {user.displayName.charAt(0).toUpperCase()}
+                  </div>
+                  <h2 className="text-base font-bold mb-0.5" style={{ color: "var(--color-obsidian-text)" }}>
+                    {user.displayName}
+                  </h2>
+                  <p className="text-xs mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    {user.email}
+                  </p>
+                  <div className="flex items-center gap-1.5 mb-5">
+                    <Cloud size={12} style={{ color: "#a6e3a1" }} />
+                    <span className="text-xs font-medium" style={{ color: "#a6e3a1" }}>Signed in &amp; syncing</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <h2 className="text-base font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+                    Cloud Sync
+                  </h2>
+                  <p className="text-xs leading-relaxed mb-5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    Sign in to sync your notes across all devices in real-time. Encrypted and private.
+                  </p>
 
-              <button
-                onClick={onSignIn}
-                className="w-full px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-3"
-                style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
-              >
-                Sign In
-              </button>
-              <button
-                onClick={onDismiss}
-                className="text-xs transition-opacity hover:opacity-80 mb-6"
-                style={{ color: "var(--color-obsidian-muted-text)" }}
-              >
-                Continue without account
-              </button>
+                  <button
+                    onClick={onSignIn}
+                    className="w-full px-5 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-3"
+                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                  >
+                    Sign In
+                  </button>
+                  <button
+                    onClick={onDismiss}
+                    className="text-xs transition-opacity hover:opacity-80 mb-6"
+                    style={{ color: "var(--color-obsidian-muted-text)" }}
+                  >
+                    Continue without account
+                  </button>
+                </>
+              )}
 
               <div className="w-full h-px mb-5" style={{ background: "var(--color-obsidian-border)" }} />
 

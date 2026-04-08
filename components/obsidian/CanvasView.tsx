@@ -50,7 +50,9 @@ interface CanvasState {
 }
 
 interface CanvasViewProps {
-  notes: Note[];
+  note: Note;
+  allNotes: Note[];
+  onChange: (content: string) => void;
   onNoteClick?: (id: string) => void;
 }
 
@@ -59,57 +61,41 @@ const COLORS = [
   "#f38ba8", "#cba6f7", "#74c7ec", "#94e2d5",
 ];
 
-const INITIAL_CANVAS: CanvasState = {
-  cards: [
-    {
-      id: "card-1",
-      type: "note",
-      x: 100,
-      y: 100,
-      width: 240,
-      height: 160,
-      content: "Welcome to Canvas",
-      noteId: undefined,
-    },
-    {
-      id: "card-2",
-      type: "text",
-      x: 400,
-      y: 120,
-      width: 200,
-      height: 100,
-      content: "This is a text card. Click to edit.",
-      color: "#89b4fa",
-    },
-    {
-      id: "card-3",
-      type: "note",
-      x: 250,
-      y: 320,
-      width: 200,
-      height: 120,
-      content: "Connected Ideas",
-    },
-  ],
-  connections: [
-    { id: "conn-1", fromId: "card-1", toId: "card-2", fromSide: "right", toSide: "left" },
-    { id: "conn-2", fromId: "card-1", toId: "card-3", fromSide: "bottom", toSide: "top" },
-  ],
-  groups: [
-    {
-      id: "group-1",
-      x: 80,
-      y: 80,
-      width: 300,
-      height: 380,
-      label: "Main Ideas",
-      color: "rgba(124,106,247,0.15)",
-    },
-  ],
+const EMPTY_CANVAS: CanvasState = {
+  cards: [],
+  connections: [],
+  groups: [],
   zoom: 1,
   panX: 0,
   panY: 0,
 };
+
+function parseCanvasContent(content: string): CanvasState {
+  try {
+    const parsed = JSON.parse(content);
+    return {
+      cards: Array.isArray(parsed.cards) ? parsed.cards : [],
+      connections: Array.isArray(parsed.connections) ? parsed.connections : [],
+      groups: Array.isArray(parsed.groups) ? parsed.groups : [],
+      zoom: typeof parsed.zoom === "number" ? parsed.zoom : 1,
+      panX: typeof parsed.panX === "number" ? parsed.panX : 0,
+      panY: typeof parsed.panY === "number" ? parsed.panY : 0,
+    };
+  } catch {
+    return EMPTY_CANVAS;
+  }
+}
+
+function serializeCanvas(canvas: CanvasState): string {
+  return JSON.stringify({
+    cards: canvas.cards,
+    connections: canvas.connections,
+    groups: canvas.groups,
+    zoom: canvas.zoom,
+    panX: canvas.panX,
+    panY: canvas.panY,
+  });
+}
 
 // ─── Helper Functions ─────────────────────────────────────────────────────────
 
@@ -539,14 +525,43 @@ function CanvasToolbar({
 
 // ─── Main Canvas View ─────────────────────────────────────────────────────────
 
-export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
-  const [canvas, setCanvas] = useState<CanvasState>(INITIAL_CANVAS);
+export default function CanvasView({ note, allNotes, onChange, onNoteClick }: CanvasViewProps) {
+  const [canvas, setCanvas] = useState<CanvasState>(() => parseCanvasContent(note.content));
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [selectedType, setSelectedType] = useState<"card" | "group" | null>(null);
   const [dragging, setDragging] = useState<{ id: string; startX: number; startY: number; objX: number; objY: number } | null>(null);
   const [activeColor, setActiveColor] = useState(COLORS[0]);
   const containerRef = useRef<HTMLDivElement>(null);
   const connectionsCanvasRef = useRef<HTMLCanvasElement>(null);
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const noteIdRef = useRef(note.id);
+
+  // Reload canvas data when switching to a different canvas note
+  useEffect(() => {
+    if (note.id !== noteIdRef.current) {
+      noteIdRef.current = note.id;
+      setCanvas(parseCanvasContent(note.content));
+      setSelectedId(null);
+      setSelectedType(null);
+    }
+  }, [note.id, note.content]);
+
+  // Debounced auto-save: persist canvas state back to the note
+  const saveCanvas = useCallback((state: CanvasState) => {
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = setTimeout(() => {
+      onChange(serializeCanvas(state));
+    }, 400);
+  }, [onChange]);
+
+  // Wrapper that updates local state and triggers save
+  const updateCanvas = useCallback((updater: (prev: CanvasState) => CanvasState) => {
+    setCanvas((prev) => {
+      const next = updater(prev);
+      saveCanvas(next);
+      return next;
+    });
+  }, [saveCanvas]);
 
   // Draw connections
   useEffect(() => {
@@ -600,11 +615,13 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
     const handleUp = () => {
       window.removeEventListener("mousemove", handleMove);
       window.removeEventListener("mouseup", handleUp);
+      // Save pan position on release
+      setCanvas((prev) => { saveCanvas(prev); return prev; });
     };
 
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
-  }, [dragging]);
+  }, [dragging, saveCanvas]);
 
   // Drag card/group
   const startDrag = (id: string, type: "card" | "group", e: React.MouseEvent) => {
@@ -649,7 +666,11 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
       }
     };
 
-    const handleUp = () => setDragging(null);
+    const handleUp = () => {
+      setDragging(null);
+      // Save position on drag end
+      setCanvas((prev) => { saveCanvas(prev); return prev; });
+    };
 
     window.addEventListener("mousemove", handleMove);
     window.addEventListener("mouseup", handleUp);
@@ -663,11 +684,11 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setCanvas((prev) => ({
+    updateCanvas((prev) => ({
       ...prev,
       zoom: Math.min(2, Math.max(0.25, prev.zoom * delta)),
     }));
-  }, []);
+  }, [updateCanvas]);
 
   // Add card
   const addCard = (type: "note" | "text") => {
@@ -682,7 +703,7 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
       content: type === "text" ? "New text" : "New note card",
       color: activeColor,
     };
-    setCanvas((prev) => ({ ...prev, cards: [...prev.cards, newCard] }));
+    updateCanvas((prev) => ({ ...prev, cards: [...prev.cards, newCard] }));
     setSelectedId(id);
     setSelectedType("card");
   };
@@ -699,7 +720,7 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
       label: "New Group",
       color: `${activeColor}20`,
     };
-    setCanvas((prev) => ({ ...prev, groups: [...prev.groups, newGroup] }));
+    updateCanvas((prev) => ({ ...prev, groups: [...prev.groups, newGroup] }));
     setSelectedId(id);
     setSelectedType("group");
   };
@@ -708,13 +729,13 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
   const deleteSelected = () => {
     if (!selectedId) return;
     if (selectedType === "card") {
-      setCanvas((prev) => ({
+      updateCanvas((prev) => ({
         ...prev,
         cards: prev.cards.filter((c) => c.id !== selectedId),
         connections: prev.connections.filter((conn) => conn.fromId !== selectedId && conn.toId !== selectedId),
       }));
     } else {
-      setCanvas((prev) => ({
+      updateCanvas((prev) => ({
         ...prev,
         groups: prev.groups.filter((g) => g.id !== selectedId),
       }));
@@ -785,7 +806,7 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
             onSelect={() => { setSelectedId(group.id); setSelectedType("group"); }}
             onDragStart={(e) => startDrag(group.id, "group", e)}
             onLabelChange={(label) =>
-              setCanvas((prev) => ({
+              updateCanvas((prev) => ({
                 ...prev,
                 groups: prev.groups.map((g) => (g.id === group.id ? { ...g, label } : g)),
               }))
@@ -803,20 +824,20 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
             onSelect={() => { setSelectedId(card.id); setSelectedType("card"); }}
             onDragStart={(e) => startDrag(card.id, "card", e)}
             onResize={(width, height) =>
-              setCanvas((prev) => ({
+              updateCanvas((prev) => ({
                 ...prev,
                 cards: prev.cards.map((c) => (c.id === card.id ? { ...c, width, height } : c)),
               }))
             }
             onContentChange={(content) =>
-              setCanvas((prev) => ({
+              updateCanvas((prev) => ({
                 ...prev,
                 cards: prev.cards.map((c) => (c.id === card.id ? { ...c, content } : c)),
               }))
             }
             onDelete={deleteSelected}
             onNoteClick={onNoteClick}
-            note={card.noteId ? notes.find((n) => n.id === card.noteId) : undefined}
+            note={card.noteId ? allNotes.find((n) => n.id === card.noteId) : undefined}
           />
         ))}
       </div>
@@ -824,16 +845,15 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
       {/* Toolbar */}
       <CanvasToolbar
         zoom={canvas.zoom}
-        onZoomIn={() => setCanvas((prev) => ({ ...prev, zoom: Math.min(2, prev.zoom * 1.2) }))}
-        onZoomOut={() => setCanvas((prev) => ({ ...prev, zoom: Math.max(0.25, prev.zoom / 1.2) }))}
-        onFitView={() => setCanvas((prev) => ({ ...prev, zoom: 1, panX: 0, panY: 0 }))}
+        onZoomIn={() => updateCanvas((prev) => ({ ...prev, zoom: Math.min(2, prev.zoom * 1.2) }))}
+        onZoomOut={() => updateCanvas((prev) => ({ ...prev, zoom: Math.max(0.25, prev.zoom / 1.2) }))}
+        onFitView={() => updateCanvas((prev) => ({ ...prev, zoom: 1, panX: 0, panY: 0 }))}
         onAddCard={addCard}
         onAddGroup={addGroup}
         selectedColor={activeColor}
         onColorChange={setActiveColor}
       />
 
-      {/* Instructions */}
       <div
         className="absolute top-4 left-4 p-3 rounded-xl text-xs max-w-xs"
         style={{
@@ -842,7 +862,7 @@ export default function CanvasView({ notes, onNoteClick }: CanvasViewProps) {
           color: "var(--color-obsidian-muted-text)",
         }}
       >
-        <p className="font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>Canvas View</p>
+        <p className="font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>{note.title}</p>
         <p>Drag to pan. Scroll to zoom. Click cards to select. Double-click to edit.</p>
       </div>
     </div>

@@ -6,7 +6,7 @@ import {
   ChevronLeft, Cloud, CloudOff, RefreshCw, Pencil,
   CalendarDays, LayoutGrid, Home, MoreVertical, Star,
   Trash2, Edit3, Copy, FolderOpen, ArrowLeft, ChevronRight,
-  PanelRight,
+  PanelRight, Layers,
 } from "lucide-react";
 import { AppState, NoteType, Note } from "./data";
 
@@ -555,6 +555,7 @@ export function NewNoteMenu({ isOpen, onClose, onSelect, installedPluginIds }: N
     { id: "drawing" as NoteType, label: "Drawing", desc: "Excalidraw canvas", icon: Pencil, color: "#cba6f7", pluginId: "excalidraw" as string | null },
     { id: "daily" as NoteType, label: "Daily Note", desc: "Journal for today", icon: CalendarDays, color: "#f9e2af", pluginId: null as string | null },
     { id: "kanban" as NoteType, label: "Kanban", desc: "Task board", icon: LayoutGrid, color: "#89b4fa", pluginId: "obsidian-kanban" as string | null },
+    { id: "canvas" as NoteType, label: "Canvas", desc: "Visual note board", icon: Layers, color: "#74c7ec", pluginId: null as string | null },
   ].filter(({ pluginId }) => !pluginId || installedPluginIds.includes(pluginId));
 
   return (

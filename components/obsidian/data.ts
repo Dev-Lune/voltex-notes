@@ -1,5 +1,5 @@
 // ─── Core Types ─────────────────────────────────────────────────────────────
-export type NoteType = "markdown" | "drawing" | "kanban" | "table" | "daily";
+export type NoteType = "markdown" | "drawing" | "kanban" | "table" | "daily" | "canvas";
 export interface NoteVersion {
   id: string;
   content: string;
@@ -539,7 +539,7 @@ export interface AppState {
   folders: Folder[];
   activeNoteId: string | null;
   openNoteIds: string[];
-  sidebarView: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "marketplace";
+  sidebarView: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "canvas" | "marketplace";
   viewMode: "live" | "editor" | "preview";
   mainView: "editor" | "graph" | "drawing" | "canvas";
   rightPanelOpen: boolean;

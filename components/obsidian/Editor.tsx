@@ -10,6 +10,7 @@ import {
   Table2, Check, Loader2, ArrowDown, ArrowLeft, ArrowRight, AlignLeft, AlignCenter,
   AlignRight, RotateCcw, Rows3, Columns3, Timer, Play, Pause, RotateCw,
   Globe, BookOpen, GitCommit, Brain, Sparkles, FlipHorizontal,
+  Layers,
 } from "lucide-react";
 import { Note, AppState, countWords, NoteType } from "./data";
 import MarkdownRenderer from "./MarkdownRenderer";
@@ -62,6 +63,7 @@ function NoteTypeBadge({ type }: { type?: NoteType }) {
     daily: { label: "Daily Note", color: "#f9e2af", icon: CalendarDays },
     kanban: { label: "Kanban", color: "#89b4fa", icon: LayoutGrid },
     table: { label: "Table", color: "#a6e3a1", icon: Edit3 },
+    canvas: { label: "Canvas", color: "#74c7ec", icon: Layers },
   };
   const t = type ?? "markdown";
   const { label, color, icon: Icon } = map[t];

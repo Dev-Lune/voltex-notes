@@ -370,10 +370,6 @@ function buildAppMenu(): void {
     {
       label: 'File',
       submenu: [
-        { label: 'New Note', accelerator: 'CmdOrCtrl+N', click: () => mainWindow?.webContents.send('tray:new-note') },
-        { type: 'separator' },
-        { label: 'Open Vault…', click: () => mainWindow?.webContents.send('menu:open-vault') },
-        { type: 'separator' },
         ...(isMac ? [] : [{ role: 'quit' as const }]),
       ],
     },

@@ -2,6 +2,10 @@ appId: in.devlune.voltex-desktop
 productName: Voltex Notes
 copyright: Copyright © 2026 DevLune Studios
 
+# Strip unused Electron locales to reduce installer size by ~35MB
+electronLanguages:
+  - en
+
 directories:
   output: release
   buildResources: build-resources
@@ -38,11 +42,10 @@ win:
       description: Open with Voltex Notes
 
 nsis:
-  oneClick: false
-  allowToChangeInstallationDirectory: true
+  oneClick: true
+  allowToChangeInstallationDirectory: false
   createDesktopShortcut: true
   createStartMenuShortcut: true
-  license: build-resources/license.rtf
 
 linux:
   target:

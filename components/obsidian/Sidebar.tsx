@@ -7,7 +7,7 @@ import {
   FolderPlus, Cloud, CloudOff, RefreshCw, Store, Pencil,
   CalendarDays, LayoutGrid, FileCode2, X, CheckSquare, Square,
   Pin, ArrowUpDown, RotateCcw, ArrowDownAZ, ArrowUpAZ, Clock,
-  FolderOpen, ChevronUp, Check
+  FolderOpen, ChevronUp, Check, Layers
 } from "lucide-react";
 import {
   Note, Folder as FolderType, AppState, NoteType,
@@ -37,6 +37,9 @@ interface SidebarProps {
   activeWebVaultId?: string | null;
   onCreateWebVault?: (name: string) => void;
   onSwitchWebVault?: (vaultId: string) => void;
+  /** Electron vault management */
+  onOpenVault?: () => void;
+  onCreateVault?: () => void;
 }
 
 type SortMode = "modified" | "created" | "title-asc" | "title-desc";
@@ -48,6 +51,7 @@ const NAV_ICONS = [
   { id: "bookmarks", icon: Bookmark, label: "Bookmarks" },
   { id: "trash", icon: Trash2, label: "Trash" },
   { id: "graph", icon: Share2, label: "Graph" },
+  { id: "canvas", icon: Layers, label: "Canvas" },
   { id: "marketplace", icon: Store, label: "Marketplace" },
 ] as const;
 
@@ -61,6 +65,7 @@ function NoteTypeIcon({ type, size = 13 }: { type?: NoteType; size?: number }) {
     case "daily": return <CalendarDays size={size} style={{ flexShrink: 0, opacity: 0.7, color: "#f9e2af" }} />;
     case "kanban": return <LayoutGrid size={size} style={{ flexShrink: 0, opacity: 0.7, color: "#89b4fa" }} />;
     case "table": return <FileCode2 size={size} style={{ flexShrink: 0, opacity: 0.7, color: "#a6e3a1" }} />;
+    case "canvas": return <Layers size={size} style={{ flexShrink: 0, opacity: 0.7, color: "#74c7ec" }} />;
     default: return <FileText size={size} style={{ flexShrink: 0, opacity: 0.7 }} />;
   }
 }
@@ -84,6 +89,7 @@ function NewNoteMenu({
     { id: "daily", label: "Daily Note", desc: "Journal entry for today", icon: CalendarDays, color: "#f9e2af", pluginId: null },
     { id: "kanban", label: "Kanban Board", desc: "Task board with columns", icon: LayoutGrid, color: "#89b4fa", pluginId: "obsidian-kanban" },
     { id: "table", label: "Table Note", desc: "Structured data table", icon: FileCode2, color: "#a6e3a1", pluginId: null },
+    { id: "canvas", label: "Canvas", desc: "Visual note board", icon: Layers, color: "#74c7ec", pluginId: null },
   ];
 
   const filtered = types.filter(({ pluginId }) => !pluginId || installedPluginIds.includes(pluginId));
@@ -611,6 +617,8 @@ export default function Sidebar({
   activeWebVaultId,
   onCreateWebVault,
   onSwitchWebVault,
+  onOpenVault,
+  onCreateVault,
 }: SidebarProps) {
   const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders, syncedFolderIds } = state;
   // Filter out trashed notes for normal views
@@ -844,7 +852,7 @@ export default function Sidebar({
             onClick={() =>
               onStateChange({
                 sidebarView: id as SidebarView,
-                mainView: id === "graph" ? "graph" : "editor",
+                mainView: id === "graph" ? "graph" : id === "canvas" ? "canvas" : "editor",
               })
             }
             className="w-8 h-8 flex items-center justify-center rounded-md transition-colors"
@@ -957,6 +965,46 @@ export default function Sidebar({
                 </>
               )}
             </div>
+          ) : sidebarView === "files" && onOpenVault ? (
+            <div className="relative">
+              <button
+                onClick={() => setVaultPickerOpen((v) => !v)}
+                className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider hover:opacity-80 transition-opacity"
+                style={{ color: "var(--color-obsidian-muted-text)" }}
+              >
+                <FolderOpen size={12} />
+                {vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Vault" : "Vault"}
+                {vaultPickerOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+              </button>
+              {vaultPickerOpen && (
+                <>
+                  <div className="fixed inset-0 z-[999]" onClick={() => setVaultPickerOpen(false)} />
+                  <div
+                    className="absolute left-0 top-full mt-1 z-[1000] w-52 rounded-lg overflow-hidden shadow-xl"
+                    style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
+                  >
+                    <button
+                      onClick={() => { onOpenVault(); setVaultPickerOpen(false); }}
+                      className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors"
+                      style={{ color: "var(--color-obsidian-text)" }}
+                    >
+                      <FolderOpen size={12} />
+                      Open Vault…
+                    </button>
+                    {onCreateVault && (
+                      <button
+                        onClick={() => { onCreateVault(); setVaultPickerOpen(false); }}
+                        className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors"
+                        style={{ color: "var(--color-obsidian-text)", borderTop: "1px solid var(--color-obsidian-border)" }}
+                      >
+                        <Plus size={12} />
+                        Create New Vault…
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
             <span
               className="text-xs font-semibold uppercase tracking-wider"
@@ -968,6 +1016,7 @@ export default function Sidebar({
                 : sidebarView === "bookmarks" ? "Bookmarks"
                 : sidebarView === "trash" ? "Trash"
                 : sidebarView === "marketplace" ? "Marketplace"
+                : sidebarView === "canvas" ? "Canvas"
                 : "Graph"}
             </span>
           )}
@@ -1453,6 +1502,66 @@ export default function Sidebar({
               </button>
             </div>
           )}
+
+          {/* Canvas files */}
+          {sidebarView === "canvas" && (() => {
+            const canvasNotes = allNotes.filter((n) => n.type === "canvas" && !n.trashed);
+            return canvasNotes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+                <Layers size={28} style={{ color: "#74c7ec", opacity: 0.7 }} />
+                <p className="text-sm font-medium" style={{ color: "var(--color-obsidian-text)" }}>
+                  No canvases yet
+                </p>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                  Create a visual board to arrange notes, text cards, and connections.
+                </p>
+                <button
+                  onClick={() => onNewNote("canvas")}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-xs font-medium transition-opacity hover:opacity-80"
+                  style={{ background: "#74c7ec", color: "#1e1e2e" }}
+                >
+                  <Plus size={13} /> New Canvas
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-0.5 px-1">
+                <button
+                  onClick={() => onNewNote("canvas")}
+                  className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-xs hover:bg-white/5 transition-colors mb-1"
+                  style={{ color: "#74c7ec" }}
+                >
+                  <Plus size={13} /> New Canvas
+                </button>
+                {canvasNotes.map((cn) => {
+                  let cardCount = 0;
+                  try { cardCount = JSON.parse(cn.content)?.cards?.length || 0; } catch { /* ignore */ }
+                  return (
+                    <button
+                      key={cn.id}
+                      onClick={() => {
+                        onStateChange({ activeNoteId: cn.id, openNoteIds: [...(state.openNoteIds || []), cn.id], mainView: "canvas" } as Partial<AppState>);
+                      }}
+                      className="flex items-center gap-2 w-full px-3 py-2 rounded-lg text-left hover:bg-white/5 transition-colors"
+                      style={{
+                        background: activeNoteId === cn.id ? "rgba(116,199,236,0.12)" : "transparent",
+                        border: activeNoteId === cn.id ? "1px solid rgba(116,199,236,0.3)" : "1px solid transparent",
+                      }}
+                    >
+                      <Layers size={14} style={{ color: "#74c7ec", flexShrink: 0 }} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-xs font-medium truncate" style={{ color: "var(--color-obsidian-text)" }}>
+                          {cn.title}
+                        </p>
+                        <p className="text-[10px]" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                          {cardCount} card{cardCount !== 1 ? "s" : ""} · {new Date(cn.updatedAt).toLocaleDateString()}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </div>
 
         {/* User area */}

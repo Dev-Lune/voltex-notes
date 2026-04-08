@@ -536,6 +536,7 @@ function CalendarTab({
   onNewDailyNote?: (date: Date) => void;
 }) {
   const [viewDate, setViewDate] = useState(new Date());
+  const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -585,9 +586,17 @@ function CalendarTab({
     const note = dailyNotesByDate[dateStr];
     if (note) {
       onNoteClick(note.id);
-    } else if (onNewDailyNote) {
-      onNewDailyNote(new Date(year, month, day));
+      setSelectedDay(null);
+    } else {
+      // Don't auto-create — just select the day to show a create prompt
+      setSelectedDay(selectedDay === day ? null : day);
     }
+  };
+
+  // Reset selected day when month changes
+  const handleMonthChange = (delta: number) => {
+    setSelectedDay(null);
+    setViewDate(new Date(year, month + delta, 1));
   };
 
   return (
@@ -595,7 +604,7 @@ function CalendarTab({
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
         <button
-          onClick={() => setViewDate(new Date(year, month - 1, 1))}
+          onClick={() => handleMonthChange(-1)}
           className="p-1 rounded hover:bg-white/5"
         >
           <ChevronLeft size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
@@ -604,7 +613,7 @@ function CalendarTab({
           {viewDate.toLocaleDateString("en-US", { month: "long", year: "numeric" })}
         </span>
         <button
-          onClick={() => setViewDate(new Date(year, month + 1, 1))}
+          onClick={() => handleMonthChange(1)}
           className="p-1 rounded hover:bg-white/5"
         >
           <ChevronRight size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
@@ -635,6 +644,7 @@ function CalendarTab({
               const dateStr = getDateStr(day);
               const hasNote = !!dailyNotesByDate[dateStr];
               const isTodayDay = isToday(day);
+              const isSelected = selectedDay === day && !hasNote;
 
               return (
                 <button
@@ -646,13 +656,19 @@ function CalendarTab({
                       ? "var(--color-obsidian-accent)"
                       : hasNote
                       ? "rgba(166,227,161,0.2)"
+                      : isSelected
+                      ? "rgba(59,142,245,0.15)"
                       : "transparent",
                     color: isTodayDay
                       ? "#fff"
                       : hasNote
                       ? "#a6e3a1"
+                      : isSelected
+                      ? "var(--color-obsidian-accent)"
                       : "var(--color-obsidian-text)",
-                    fontWeight: isTodayDay || hasNote ? 600 : 400,
+                    fontWeight: isTodayDay || hasNote || isSelected ? 600 : 400,
+                    outline: isSelected ? "1px solid var(--color-obsidian-accent)" : "none",
+                    outlineOffset: "-1px",
                   }}
                 >
                   {day}
@@ -668,6 +684,26 @@ function CalendarTab({
           </div>
         ))}
       </div>
+
+      {/* Create daily note prompt */}
+      {selectedDay !== null && onNewDailyNote && (
+        <div className="mt-2 p-2 rounded-lg" style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}>
+          <p className="text-xs mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            No note for {new Date(year, month, selectedDay).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+          </p>
+          <button
+            onClick={() => {
+              onNewDailyNote(new Date(year, month, selectedDay));
+              setSelectedDay(null);
+            }}
+            className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-xs font-medium transition-opacity hover:opacity-80"
+            style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+          >
+            <Plus size={12} />
+            Create daily note
+          </button>
+        </div>
+      )}
 
       {/* Legend */}
       <div className="flex items-center gap-3 mt-3 pt-3" style={{ borderTop: "1px solid var(--color-obsidian-border)" }}>
