@@ -552,6 +552,46 @@ export const THEMES: ObsidianTheme[] = [
       "--obs-tag": "#ffb700",
     },
   },
+  {
+    id: "synthwave-84",
+    name: "Synthwave '84",
+    description: "Neon-soaked retrowave aesthetic for late-night writing sessions.",
+    author: "robb0wen",
+    downloads: 280000,
+    preview: ["#241b2f", "#ff7edb", "#f8f8f2"],
+    vars: {
+      "--obs-bg": "#241b2f",
+      "--obs-surface": "#2a1f3d",
+      "--obs-surface-2": "#34294f",
+      "--obs-border": "#463465",
+      "--obs-text": "#f8f8f2",
+      "--obs-muted": "#8b6dab",
+      "--obs-accent": "#ff7edb",
+      "--obs-accent-soft": "#fede5d",
+      "--obs-link": "#36f9f6",
+      "--obs-tag": "#72f1b8",
+    },
+  },
+  {
+    id: "espresso",
+    name: "Espresso",
+    description: "Warm, low-contrast brown for marathon writing.",
+    author: "DevLune Studios",
+    downloads: 0,
+    preview: ["#2a1d12", "#e0a16d", "#efe1cf"],
+    vars: {
+      "--obs-bg": "#2a1d12",
+      "--obs-surface": "#33241a",
+      "--obs-surface-2": "#3d2c20",
+      "--obs-border": "#4d392b",
+      "--obs-text": "#efe1cf",
+      "--obs-muted": "#8a715a",
+      "--obs-accent": "#e0a16d",
+      "--obs-accent-soft": "#f4c98e",
+      "--obs-link": "#a4c5a4",
+      "--obs-tag": "#d99a9a",
+    },
+  },
 ];
 // ─── AppState ────────────────────────────────────────────────────────────────
 export interface AppState {
@@ -561,7 +601,7 @@ export interface AppState {
   openNoteIds: string[];
   sidebarView: "files" | "search" | "tags" | "bookmarks" | "trash" | "graph" | "canvas" | "marketplace";
   viewMode: "live" | "editor" | "preview";
-  mainView: "editor" | "graph" | "drawing" | "canvas";
+  mainView: "editor" | "graph" | "canvas";
   rightPanelOpen: boolean;
   rightPanelTab: "backlinks" | "outline" | "properties" | "calendar" | "localgraph" | "heatmap" | "flashcards" | "mindmap";
   searchQuery: string;
@@ -585,7 +625,12 @@ export interface AppState {
   syncedFolderIds?: string[];
   /** Active vault ID (web) — null means default vault */
   activeVaultId?: string;
+  /** Pet companion settings — when enabled, a small creature roams the editor. */
+  petEnabled?: boolean;
+  petType?: PetType;
 }
+
+export type PetType = "cat" | "fox" | "dragon" | "ghost" | "alien" | "axolotl";
 // ─── Editor Preferences ──────────────────────────────────────────────────────
 export interface EditorPreferences {
   defaultView: "editor" | "graph" | "last-used";

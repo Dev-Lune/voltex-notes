@@ -42,6 +42,15 @@ interface SidebarProps {
   onCreateVault?: () => void;
   recentVaults?: Array<{ path: string; name: string; lastOpened: number }>;
   onOpenRecent?: (vaultPath: string) => void;
+  /** Confirmation dialog handler (replaces native confirm) */
+  onConfirm?: (cfg: {
+    title: string;
+    description?: React.ReactNode;
+    confirmLabel?: string;
+    tone?: "danger" | "warning" | "info";
+    requireTypedConfirmation?: string;
+    onConfirm: () => void;
+  }) => void;
 }
 
 type SortMode = "modified" | "created" | "title-asc" | "title-desc";
@@ -186,6 +195,7 @@ function FileTreeItem({
   selectionMode,
   isSelected,
   onToggleSelect,
+  depth = 0,
 }: {
   note: Note;
   isActive: boolean;
@@ -197,6 +207,7 @@ function FileTreeItem({
   selectionMode?: boolean;
   isSelected?: boolean;
   onToggleSelect?: (id: string) => void;
+  depth?: number;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ x: number; y: number } | null>(null);
@@ -274,11 +285,21 @@ function FileTreeItem({
   return (
     <div
       data-file-item
-      className="group relative flex items-center gap-2 px-3 py-1.5 rounded-md cursor-pointer text-sm transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none"
+      className="vx-tree-row group relative flex items-center gap-1.5 px-2 cursor-pointer transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none"
       tabIndex={0}
       style={{
-        background: isSelected ? "rgba(243,139,168,0.15)" : isActive ? "color-mix(in srgb, var(--color-obsidian-accent) 13%, transparent)" : "transparent",
+        height: 28,
+        paddingLeft: 8 + depth * 14,
+        borderRadius: 6,
+        fontSize: 13,
+        lineHeight: "18px",
+        background: isSelected
+          ? "rgba(243,139,168,0.15)"
+          : isActive
+            ? "color-mix(in srgb, var(--color-obsidian-accent) 13%, transparent)"
+            : "transparent",
         color: isActive ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
+        fontWeight: isActive ? 500 : 400,
       }}
       onClick={() => {
         if (selectionMode && onToggleSelect) {
@@ -301,7 +322,9 @@ function FileTreeItem({
           {isSelected ? <CheckSquare size={13} /> : <Square size={13} />}
         </button>
       ) : (
-        <NoteTypeIcon type={note.type} />
+        <span className="shrink-0 flex items-center justify-center" style={{ width: 14, color: "var(--color-obsidian-muted-text)", opacity: isActive ? 1 : 0.85 }}>
+          <NoteTypeIcon type={note.type} size={13} />
+        </span>
       )}
       {renaming ? (
         <input
@@ -313,12 +336,12 @@ function FileTreeItem({
             if (e.key === "Enter") { if (renameVal.trim()) onRename(note.id, renameVal.trim()); setRenaming(false); }
             if (e.key === "Escape") setRenaming(false);
           }}
-          className="flex-1 bg-transparent outline-none text-sm"
-          style={{ color: "var(--color-obsidian-text)" }}
+          className="flex-1 bg-transparent outline-none"
+          style={{ color: "var(--color-obsidian-text)", fontSize: 13 }}
           onClick={(e) => e.stopPropagation()}
         />
       ) : (
-        <span className="flex-1 truncate text-sm">{note.title}</span>
+        <span className="flex-1 truncate" style={{ fontSize: 13 }}>{note.title}</span>
       )}
       {note.pinned && <Pin size={10} className="group-hover:hidden" style={{ color: "var(--color-obsidian-accent-soft)", flexShrink: 0 }} />}
       {note.starred && <Star size={10} className="group-hover:hidden" style={{ color: "#f9e2af", flexShrink: 0 }} />}
@@ -440,8 +463,9 @@ function FolderGroup({
       }}
     >
       {renaming ? (
-        <div className="flex items-center gap-1.5 px-3 py-1">
-          <Folder size={11} style={{ color: "var(--color-obsidian-muted-text)" }} />
+        <div className="vx-tree-row flex items-center gap-1.5 px-2" style={{ height: 28 }}>
+          <ChevronDown size={12} style={{ color: "var(--color-obsidian-muted-text)", opacity: 0.5 }} />
+          <Folder size={13} style={{ color: "var(--color-obsidian-muted-text)" }} />
           <input
             autoFocus
             value={renameValue}
@@ -463,17 +487,20 @@ function FolderGroup({
                 setRenaming(false);
               }
             }}
-            className="flex-1 bg-transparent outline-none text-xs font-medium uppercase tracking-wider"
-            style={{ color: "var(--color-obsidian-text)", borderBottom: "1px solid var(--color-obsidian-accent)" }}
+            className="flex-1 bg-transparent outline-none"
+            style={{ color: "var(--color-obsidian-text)", fontSize: 13, borderBottom: "1px solid var(--color-obsidian-accent)" }}
           />
         </div>
       ) : (
         <div
-          className="group/folder w-full flex items-center gap-1.5 px-3 py-1 text-xs font-medium uppercase tracking-wider hover:opacity-80 transition-all cursor-pointer"
+          className="vx-tree-row group/folder w-full flex items-center gap-1.5 px-2 hover:bg-white/[0.04] transition-colors cursor-pointer"
           style={{
-            color: "var(--color-obsidian-muted-text)",
-            background: dragOver ? "var(--color-obsidian-selection)" : "transparent",
-            borderRadius: 4,
+            height: 28,
+            borderRadius: 6,
+            color: "var(--color-obsidian-text)",
+            background: dragOver ? "color-mix(in srgb, var(--color-obsidian-accent) 12%, transparent)" : "transparent",
+            fontSize: 13,
+            fontWeight: 500,
           }}
           onClick={() => setOpen((v) => !v)}
           onContextMenu={(e) => {
@@ -481,14 +508,16 @@ function FolderGroup({
             setContextMenu({ x: e.clientX, y: e.clientY });
           }}
         >
-          {open ? <ChevronDown size={11} /> : <ChevronRight size={11} />}
-          <Folder size={11} />
-          <span className="flex-1 truncate">{folder.name}</span>
+          <span className="shrink-0 flex items-center justify-center" style={{ width: 12, color: "var(--color-obsidian-muted-text)" }}>
+            {open ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+          </span>
+          <Folder size={13} style={{ color: "var(--color-obsidian-muted-text)", flexShrink: 0 }} />
+          <span className="flex-1 truncate" style={{ fontSize: 13 }}>{folder.name}</span>
           {isSynced && <Cloud size={10} style={{ color: "var(--color-obsidian-accent)", opacity: 0.7, flexShrink: 0 }} />}
-          <span className="opacity-60 group-hover/folder:hidden">{folderNotes.length}</span>
+          <span className="tabular-nums opacity-50 group-hover/folder:hidden" style={{ fontSize: 11 }}>{folderNotes.length}</span>
           <div className="hidden group-hover/folder:flex items-center gap-0.5">
             <button
-              className="p-0.5 rounded hover:bg-white/10 transition-colors"
+              className="p-1 rounded hover:bg-white/10 transition-colors"
               style={{ color: "#ef4444" }}
               onClick={(e) => { e.stopPropagation(); setConfirmDelete(true); }}
               aria-label="Delete folder"
@@ -496,7 +525,7 @@ function FolderGroup({
               <Trash2 size={11} />
             </button>
             <button
-              className="p-0.5 rounded hover:bg-white/10 transition-colors"
+              className="p-1 rounded hover:bg-white/10 transition-colors"
               style={{ color: "var(--color-obsidian-muted-text)" }}
               onClick={(e) => { e.stopPropagation(); setContextMenu({ x: e.clientX, y: e.clientY }); }}
               aria-label="More options"
@@ -582,6 +611,7 @@ function FolderGroup({
           <FileTreeItem
             key={note.id}
             note={note}
+            depth={1}
             isActive={activeNoteId === note.id}
             onClick={() => onNoteClick(note.id)}
             onDelete={onDeleteNote}
@@ -624,6 +654,7 @@ export default function Sidebar({
   onCreateVault,
   recentVaults,
   onOpenRecent,
+  onConfirm,
 }: SidebarProps) {
   const { notes: allNotes, activeNoteId, sidebarView, searchQuery, syncStatus, user, folders, syncedFolderIds } = state;
   // Filter out trashed notes for normal views
@@ -746,10 +777,23 @@ export default function Sidebar({
   const handleBulkDelete = () => {
     const count = selectedIds.size;
     if (count === 0) return;
-    if (!confirm(`Move ${count} note${count > 1 ? "s" : ""} to Trash?`)) return;
-    selectedIds.forEach((id) => onDeleteNote(id));
-    setSelectedIds(new Set());
-    setSelectionMode(false);
+    const ids = Array.from(selectedIds);
+    const performDelete = () => {
+      ids.forEach((id) => onDeleteNote(id));
+      setSelectedIds(new Set());
+      setSelectionMode(false);
+    };
+    if (onConfirm) {
+      onConfirm({
+        title: `Move ${count} note${count > 1 ? "s" : ""} to Trash?`,
+        description: <>Selected notes will be moved to Trash. You can restore them later.</>,
+        confirmLabel: "Move to trash",
+        tone: "warning",
+        onConfirm: performDelete,
+      });
+    } else {
+      performDelete();
+    }
   };
 
   const handleStarToggle = (id: string, starred: boolean) => {
@@ -847,26 +891,28 @@ export default function Sidebar({
     <div className="flex h-full" style={{ background: "var(--color-obsidian-surface)" }}>
       {/* Icon rail */}
       <div
-        className="flex flex-col items-center py-2 gap-0.5"
-        style={{ width: 44, borderRight: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}
+        className="flex flex-col items-center py-2 gap-0.5 shrink-0"
+        style={{ width: isMobile ? 56 : 44, borderRight: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}
       >
         {NAV_ICONS.map(({ id, icon: Icon, label }) => (
           <button
             key={id}
             title={label}
+            aria-label={label}
+            aria-current={sidebarView === id ? "page" : undefined}
             onClick={() =>
               onStateChange({
                 sidebarView: id as SidebarView,
                 mainView: id === "graph" ? "graph" : id === "canvas" ? "canvas" : "editor",
               })
             }
-            className="w-8 h-8 flex items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none"
+            className={`${isMobile ? "w-11 h-11 tap-target" : "w-8 h-8"} flex items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)] focus-visible:outline-none`}
             style={{
               color: sidebarView === id ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)",
               background: sidebarView === id ? "color-mix(in srgb, var(--color-obsidian-accent) 15%, transparent)" : "transparent",
             }}
           >
-            <Icon size={16} />
+            <Icon size={isMobile ? 20 : 16} />
           </button>
         ))}
 
@@ -894,36 +940,52 @@ export default function Sidebar({
       <div className="flex flex-col flex-1 min-w-0">
         {/* Panel header */}
         <div
-          className="flex items-center justify-between px-3 py-2 shrink-0"
-          style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
+          className="flex items-center justify-between px-3 shrink-0"
+          style={{ borderBottom: "1px solid var(--color-obsidian-border)", height: 40 }}
         >
           {/* Vault picker (web) or title */}
-          {sidebarView === "files" && webVaults && webVaults.length > 0 && onSwitchWebVault ? (
+          {sidebarView === "files" && webVaults && onSwitchWebVault ? (
             <div className="relative">
               <button
                 onClick={() => setVaultPickerOpen((v) => !v)}
-                className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider hover:opacity-80 transition-opacity"
-                style={{ color: "var(--color-obsidian-muted-text)" }}
+                className="flex items-center gap-1.5 px-2 -mx-2 rounded-md hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+                style={{ color: "var(--color-obsidian-text)", height: 28, fontSize: 13, fontWeight: 600 }}
+                aria-haspopup="menu"
+                aria-expanded={vaultPickerOpen}
+                aria-label="Switch vault"
               >
-                <FolderOpen size={12} />
-                {webVaults.find(v => v.id === activeWebVaultId)?.name || "Select Vault"}
-                {vaultPickerOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                <FolderOpen size={13} style={{ color: "var(--color-obsidian-accent)" }} />
+                <span className="truncate max-w-[140px]">
+                  {webVaults.find(v => v.id === activeWebVaultId)?.name || (webVaults.length === 0 ? "No vault" : "Select vault")}
+                </span>
+                {vaultPickerOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               </button>
               {vaultPickerOpen && (
                 <>
                   <div className="fixed inset-0 z-[999]" onClick={() => { setVaultPickerOpen(false); setNewVaultName(""); }} />
                   <div
+                    role="menu"
+                    aria-label="Vaults"
+                    onKeyDown={(e) => { if (e.key === "Escape") { setVaultPickerOpen(false); setNewVaultName(""); } }}
                     className="absolute left-0 top-full mt-1 z-[1000] w-52 rounded-lg overflow-hidden shadow-xl"
                     style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
                   >
-                    <div className="px-2 py-1.5" style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
-                      <span className="text-xs font-medium" style={{ color: "var(--color-obsidian-muted-text)" }}>Vaults</span>
+                    <div className="px-3 py-2 flex items-center justify-between" style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}>
+                      <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: "var(--color-obsidian-muted-text)" }}>Vaults</span>
+                      <span className="text-[11px]" style={{ color: "var(--color-obsidian-muted-text)" }}>{webVaults.length}</span>
                     </div>
+                    {webVaults.length === 0 && (
+                      <div className="px-3 py-3 text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                        No vaults yet. Create one below to get started.
+                      </div>
+                    )}
                     {webVaults.map((v) => (
                       <button
                         key={v.id}
+                        role="menuitemradio"
+                        aria-checked={v.id === activeWebVaultId}
                         onClick={() => { onSwitchWebVault(v.id); setVaultPickerOpen(false); }}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                        className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/5"
                         style={{
                           color: v.id === activeWebVaultId ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-text)",
                           background: v.id === activeWebVaultId ? "color-mix(in srgb, var(--color-obsidian-accent) 10%, transparent)" : "transparent",
@@ -974,23 +1036,32 @@ export default function Sidebar({
             <div className="relative">
               <button
                 onClick={() => setVaultPickerOpen((v) => !v)}
-                className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wider hover:opacity-80 transition-opacity"
-                style={{ color: "var(--color-obsidian-muted-text)" }}
+                className="flex items-center gap-1.5 px-2 -mx-2 rounded-md hover:bg-white/[0.06] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+                style={{ color: "var(--color-obsidian-text)", height: 28, fontSize: 13, fontWeight: 600 }}
+                aria-haspopup="menu"
+                aria-expanded={vaultPickerOpen}
+                aria-label="Open or switch vault"
               >
-                <FolderOpen size={12} />
-                {vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Vault" : "Vault"}
-                {vaultPickerOpen ? <ChevronUp size={10} /> : <ChevronDown size={10} />}
+                <FolderOpen size={13} style={{ color: "var(--color-obsidian-accent)" }} />
+                <span className="truncate max-w-[140px]">
+                  {vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Vault" : "Open vault"}
+                </span>
+                {vaultPickerOpen ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
               </button>
               {vaultPickerOpen && (
                 <>
                   <div className="fixed inset-0 z-[999]" onClick={() => setVaultPickerOpen(false)} />
                   <div
+                    role="menu"
+                    aria-label="Vault options"
+                    onKeyDown={(e) => { if (e.key === "Escape") setVaultPickerOpen(false); }}
                     className="absolute left-0 top-full mt-1 z-[1000] w-52 rounded-lg overflow-hidden shadow-xl"
                     style={{ background: "var(--color-obsidian-surface)", border: "1px solid var(--color-obsidian-border)" }}
                   >
                     <button
+                      role="menuitem"
                       onClick={() => { onOpenVault(); setVaultPickerOpen(false); }}
-                      className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors"
+                      className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/5"
                       style={{ color: "var(--color-obsidian-text)" }}
                     >
                       <FolderOpen size={12} />
@@ -998,8 +1069,9 @@ export default function Sidebar({
                     </button>
                     {onCreateVault && (
                       <button
+                        role="menuitem"
                         onClick={() => { onCreateVault(); setVaultPickerOpen(false); }}
-                        className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors"
+                        className="w-full text-left flex items-center gap-2 px-3 py-2.5 text-xs hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/5"
                         style={{ color: "var(--color-obsidian-text)", borderTop: "1px solid var(--color-obsidian-border)" }}
                       >
                         <Plus size={12} />
@@ -1016,8 +1088,9 @@ export default function Sidebar({
                         {recentVaults.slice(0, 6).map((vault) => (
                           <button
                             key={vault.path}
+                            role="menuitem"
                             onClick={() => { onOpenRecent(vault.path); setVaultPickerOpen(false); }}
-                            className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors"
+                            className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-white/5 transition-colors focus-visible:outline-none focus-visible:bg-white/5"
                             style={{ color: "var(--color-obsidian-text)" }}
                             title={vault.path}
                           >
@@ -1033,8 +1106,8 @@ export default function Sidebar({
             </div>
           ) : (
             <span
-              className="text-xs font-semibold uppercase tracking-wider"
-              style={{ color: "var(--color-obsidian-muted-text)" }}
+              className="truncate"
+              style={{ color: "var(--color-obsidian-text)", fontSize: 13, fontWeight: 600 }}
             >
               {sidebarView === "files" ? (vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() || "Explorer" : "Explorer")
                 : sidebarView === "search" ? "Search"
@@ -1179,8 +1252,8 @@ export default function Sidebar({
           {/* Files */}
           {sidebarView === "files" && (
             <div
-              className="flex flex-col gap-1 relative"
-              style={{ minHeight: "100%" }}
+              className="flex flex-col px-1 relative"
+              style={{ minHeight: "100%", gap: 1 }}
               onContextMenu={(e) => {
                 if ((e.target as HTMLElement).closest("[data-file-item]")) return;
                 e.preventDefault();
@@ -1218,6 +1291,28 @@ export default function Sidebar({
                   <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
                     You can also drag &amp; drop a folder here
                   </p>
+                </div>
+              )}
+
+              {/* Vault empty state — Web, no vaults yet */}
+              {!onOpenVault && webVaults && webVaults.length === 0 && onCreateWebVault && (
+                <div className="flex flex-col items-center gap-3 px-4 py-10 text-center">
+                  <FolderOpen size={40} style={{ color: "var(--color-obsidian-muted-text)", opacity: 0.3 }} />
+                  <div>
+                    <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>No vault yet</p>
+                    <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                      Create your first vault to start writing notes.
+                    </p>
+                  </div>
+                  <div className="flex flex-col gap-2 w-full">
+                    <button
+                      onClick={() => { setVaultPickerOpen(true); }}
+                      className="flex items-center justify-center gap-2 w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                      style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                    >
+                      <Plus size={14} /> Create new vault
+                    </button>
+                  </div>
                 </div>
               )}
               {/* Explorer context menu */}
@@ -1512,8 +1607,17 @@ export default function Sidebar({
                   </button>
                   <button
                     onClick={() => {
-                      if (confirm(`Permanently delete "${note.title}"? This cannot be undone.`)) {
-                        onPermanentlyDelete?.(note.id);
+                      const performDelete = () => onPermanentlyDelete?.(note.id);
+                      if (onConfirm) {
+                        onConfirm({
+                          title: "Delete permanently?",
+                          description: <><strong>&quot;{note.title}&quot;</strong> will be permanently deleted. This cannot be undone.</>,
+                          confirmLabel: "Delete forever",
+                          tone: "danger",
+                          onConfirm: performDelete,
+                        });
+                      } else {
+                        performDelete();
                       }
                     }}
                     className="p-1.5 rounded hover:bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -1528,8 +1632,18 @@ export default function Sidebar({
               {trashedNotes.length > 0 && (
                 <button
                   onClick={() => {
-                    if (confirm(`Permanently delete ${trashedNotes.length} note${trashedNotes.length === 1 ? "" : "s"}? This cannot be undone.`)) {
-                      trashedNotes.forEach((n) => onPermanentlyDelete?.(n.id));
+                    const performEmpty = () => trashedNotes.forEach((n) => onPermanentlyDelete?.(n.id));
+                    if (onConfirm) {
+                      onConfirm({
+                        title: "Empty trash?",
+                        description: <>All <strong>{trashedNotes.length} note{trashedNotes.length === 1 ? "" : "s"}</strong> in trash will be permanently deleted. This cannot be undone.</>,
+                        confirmLabel: "Empty trash",
+                        tone: "danger",
+                        requireTypedConfirmation: "empty",
+                        onConfirm: performEmpty,
+                      });
+                    } else {
+                      performEmpty();
                     }
                   }}
                   className="flex items-center justify-center gap-1.5 px-3 py-2 mt-2 rounded-lg text-xs hover:opacity-80 transition-opacity"

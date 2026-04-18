@@ -341,7 +341,7 @@ export function MobileDrawer({ isOpen, onClose, children, title, side = "left" }
       {/* Drawer */}
       <div
         ref={drawerRef}
-        className={`fixed top-0 ${positionClass} bottom-0 z-50 w-[85%] max-w-[320px] mobile-drawer`}
+        className={`fixed top-0 ${positionClass} bottom-0 z-50 w-[88%] max-w-[360px] mobile-drawer flex flex-col`}
         style={{
           background: "var(--color-obsidian-surface)",
           boxShadow: isOpen ? (side === "left" ? "4px 0 24px rgba(0,0,0,0.4)" : "-4px 0 24px rgba(0,0,0,0.4)") : "none",
@@ -353,7 +353,7 @@ export function MobileDrawer({ isOpen, onClose, children, title, side = "left" }
       >
         {/* Drawer header */}
         <div
-          className="flex items-center justify-between px-4 h-16 safe-top"
+          className="flex items-center justify-between px-4 h-16 safe-top shrink-0"
           style={{ borderBottom: "1px solid var(--color-obsidian-border)" }}
         >
           <div className="flex items-center gap-3">
@@ -386,7 +386,7 @@ export function MobileDrawer({ isOpen, onClose, children, title, side = "left" }
         </div>
 
         {/* Drawer content */}
-        <div className="flex-1 overflow-y-auto overscroll-contain">
+        <div className="flex-1 min-h-0 overflow-hidden">
           {children}
         </div>
       </div>

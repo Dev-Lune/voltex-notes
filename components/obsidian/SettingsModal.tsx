@@ -5,12 +5,12 @@ import JSZip from "jszip";
 import {
   X, Settings, Puzzle, Cloud, Palette, Keyboard, User,
   Shield, Download, Upload, Trash2, RefreshCw, CheckCircle, ChevronRight,
-  ExternalLink, Star, Check, Monitor, Sun, Feather, Pipette, RotateCcw, ChevronDown, ChevronUp, FolderOpen, FolderPlus
+  ExternalLink, Star, Check, Monitor, Sun, Feather, Pipette, RotateCcw, ChevronDown, ChevronUp, FolderOpen, FolderPlus, Cat
 } from "lucide-react";
 import {
   AppState, THEMES, ObsidianTheme, applyTheme, formatDownloads,
   CustomThemeColors, DEFAULT_CUSTOM_COLORS, COLOR_PALETTES, applyCustomColors, getColorsFromTheme,
-  EditorPreferences, NoteType, MARKETPLACE_ITEMS, MarketplaceItem
+  EditorPreferences, NoteType, MARKETPLACE_ITEMS, MarketplaceItem, PetType
 } from "./data";
 import { isElectron, appClient } from "@/lib/vault/client";
 
@@ -28,11 +28,13 @@ interface SettingsModalProps {
   onImportNotes?: (files: { title: string; content: string; folder?: string }[]) => void;
   onSwitchVault?: () => void;
   onCreateVault?: () => void;
+  onAppStateChange?: (patch: Partial<AppState>) => void;
 }
 
 type Tab =
   | "general"
   | "appearance"
+  | "companion"
   | "cloud"
   | "plugins"
   | "hotkeys"
@@ -41,6 +43,7 @@ type Tab =
 const TABS: { id: Tab; icon: React.ElementType; label: string }[] = [
   { id: "general", icon: Settings, label: "General" },
   { id: "appearance", icon: Palette, label: "Appearance" },
+  { id: "companion", icon: Cat, label: "Companion" },
   { id: "cloud", icon: Cloud, label: "Cloud Sync" },
   { id: "plugins", icon: Puzzle, label: "Plugins" },
   { id: "hotkeys", icon: Keyboard, label: "Hotkeys" },
@@ -398,6 +401,100 @@ function ThemeCustomizer({ customColors, onColorsChange, onReset }: ThemeCustomi
   );
 }
 
+// ─── Companion Tab ────────────────────────────────────────────────────────────
+
+const PET_OPTIONS: { id: PetType; label: string; emoji: string; tagline: string }[] = [
+  { id: "cat", label: "Cat", emoji: "🐱", tagline: "Curious. Naps on headings." },
+  { id: "fox", label: "Fox", emoji: "🦊", tagline: "Sneaky. Loves links." },
+  { id: "dragon", label: "Dragon", emoji: "🐉", tagline: "Hoards your knowledge." },
+  { id: "ghost", label: "Ghost", emoji: "👻", tagline: "Floats. Spooky friend." },
+  { id: "alien", label: "Alien", emoji: "👽", tagline: "From planet Notes." },
+  { id: "axolotl", label: "Axolotl", emoji: "🦎", tagline: "Wiggly. Mostly chill." },
+];
+
+function CompanionTab({
+  petEnabled,
+  petType,
+  onPetEnabledChange,
+  onPetTypeChange,
+}: {
+  petEnabled: boolean;
+  petType: PetType;
+  onPetEnabledChange: (v: boolean) => void;
+  onPetTypeChange: (t: PetType) => void;
+}) {
+  return (
+    <div className="space-y-6">
+      <div>
+        <h3 className="text-base font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+          Pet companion
+        </h3>
+        <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          A small intelligent creature that roams your editor. Reacts to clicks,
+          chases your cursor, inspects headings and links. Drag to relocate.
+        </p>
+      </div>
+
+      <label
+        className="flex items-center justify-between gap-4 px-4 py-3 rounded-xl cursor-pointer"
+        style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)" }}
+      >
+        <div>
+          <div className="text-sm font-medium" style={{ color: "var(--color-obsidian-text)" }}>
+            Enable companion
+          </div>
+          <div className="text-xs mt-0.5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+            Hidden by default. Off on mobile.
+          </div>
+        </div>
+        <input
+          type="checkbox"
+          checked={petEnabled}
+          onChange={(e) => onPetEnabledChange(e.target.checked)}
+          className="w-5 h-5 cursor-pointer accent-[var(--color-obsidian-accent)]"
+          aria-label="Enable pet companion"
+        />
+      </label>
+
+      <div>
+        <div className="text-xs font-semibold mb-2 uppercase tracking-wider" style={{ color: "var(--color-obsidian-muted-text)" }}>
+          Choose your companion
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+          {PET_OPTIONS.map((opt) => {
+            const active = petType === opt.id;
+            return (
+              <button
+                key={opt.id}
+                onClick={() => onPetTypeChange(opt.id)}
+                className="flex flex-col items-start text-left p-3 rounded-xl transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+                style={{
+                  background: active ? "color-mix(in srgb, var(--color-obsidian-accent) 14%, transparent)" : "var(--color-obsidian-bg)",
+                  border: active ? "1px solid var(--color-obsidian-accent)" : "1px solid var(--color-obsidian-border)",
+                }}
+                aria-pressed={active}
+              >
+                <span className="text-3xl mb-1.5" aria-hidden>{opt.emoji}</span>
+                <span className="text-sm font-medium" style={{ color: "var(--color-obsidian-text)" }}>{opt.label}</span>
+                <span className="text-[11px]" style={{ color: "var(--color-obsidian-muted-text)" }}>{opt.tagline}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div
+        className="px-4 py-3 rounded-xl text-xs"
+        style={{ background: "color-mix(in srgb, var(--color-obsidian-accent) 8%, transparent)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-muted-text)" }}
+      >
+        <strong style={{ color: "var(--color-obsidian-text)" }}>Tip — </strong>
+        Click anywhere to make your companion leap toward the spot. Hover near
+        it to make it chase your cursor. Drag it to a new home.
+      </div>
+    </div>
+  );
+}
+
 function AppearanceTab({
   activeThemeId,
   onThemeChange,
@@ -409,7 +506,6 @@ function AppearanceTab({
   fontSize: number;
   onFontSizeChange: (size: number) => void;
 }) {
-  // Determine current interface mode based on active theme
   const getCurrentMode = (): InterfaceMode => {
     if (activeThemeId === "light-paper") return "light";
     if (activeThemeId === "nord") return "minimal";
@@ -1571,6 +1667,7 @@ export default function SettingsModal({
   onImportNotes,
   onSwitchVault,
   onCreateVault,
+  onAppStateChange,
 }: SettingsModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>("general");
 
@@ -1667,6 +1764,15 @@ export default function SettingsModal({
                 onThemeChange={onThemeChange}
                 fontSize={state.preferences.fontSize}
                 onFontSizeChange={(size) => onPreferencesChange({ fontSize: size })}
+              />
+            )}
+
+            {activeTab === "companion" && (
+              <CompanionTab
+                petEnabled={state.petEnabled ?? false}
+                petType={state.petType ?? "cat"}
+                onPetEnabledChange={(v) => onAppStateChange?.({ petEnabled: v })}
+                onPetTypeChange={(t) => onAppStateChange?.({ petType: t })}
               />
             )}
 

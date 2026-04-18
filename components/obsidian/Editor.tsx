@@ -728,11 +728,13 @@ function TabBar({
 
   return (
     <div
+      role="tablist"
+      aria-label="Open notes"
       className="flex items-center overflow-x-auto shrink-0 scrollbar-thin"
       style={{
         borderBottom: "1px solid var(--color-obsidian-border)",
         background: "var(--color-obsidian-bg)",
-        minHeight: 36,
+        height: 36,
       }}
     >
       {openNoteIds.map((id) => {
@@ -742,31 +744,53 @@ function TabBar({
           <div
             key={id}
             ref={isActive ? activeTabRef : undefined}
-            className="group flex items-center gap-1.5 px-3 py-2 cursor-pointer shrink-0 transition-colors"
+            role="tab"
+            tabIndex={isActive ? 0 : -1}
+            aria-selected={isActive}
+            className="group flex items-center gap-1.5 px-3 cursor-pointer shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
             style={{
+              height: 36,
               borderRight: "1px solid var(--color-obsidian-border)",
               background: isActive ? "var(--color-obsidian-surface)" : "transparent",
-              borderBottom: isActive ? "2px solid var(--color-obsidian-accent)" : "2px solid transparent",
+              boxShadow: isActive ? "inset 0 -2px 0 0 var(--color-obsidian-accent)" : "inset 0 -2px 0 0 transparent",
               color: isActive ? "var(--color-obsidian-text)" : "var(--color-obsidian-muted-text)",
-              maxWidth: 180,
+              fontWeight: isActive ? 500 : 400,
+              maxWidth: 200,
+              minWidth: 110,
             }}
             onClick={() => onActivate(id)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onActivate(id);
+              } else if (e.key === "Delete" || (e.ctrlKey && e.key === "w")) {
+                e.preventDefault();
+                onClose(id);
+              } else if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+                e.preventDefault();
+                const idx = openNoteIds.indexOf(id);
+                const nextIdx = e.key === "ArrowRight"
+                  ? (idx + 1) % openNoteIds.length
+                  : (idx - 1 + openNoteIds.length) % openNoteIds.length;
+                onActivate(openNoteIds[nextIdx]);
+              }
+            }}
           >
-            {note?.type === "drawing" && <Pencil size={10} style={{ color: "#cba6f7", flexShrink: 0 }} />}
-            {note?.type === "daily" && <CalendarDays size={10} style={{ color: "#f9e2af", flexShrink: 0 }} />}
-            {note?.type === "kanban" && <LayoutGrid size={10} style={{ color: "#89b4fa", flexShrink: 0 }} />}
-            {note?.type === "table" && <Table2 size={10} style={{ color: "#a6e3a1", flexShrink: 0 }} />}
-            {note?.type === "canvas" && <Layers size={10} style={{ color: "#74c7ec", flexShrink: 0 }} />}
-            <span className="text-xs truncate">{note?.title ?? "Untitled"}</span>
+            {note?.type === "drawing" && <Pencil size={11} style={{ color: "#cba6f7", flexShrink: 0 }} />}
+            {note?.type === "daily" && <CalendarDays size={11} style={{ color: "#f9e2af", flexShrink: 0 }} />}
+            {note?.type === "kanban" && <LayoutGrid size={11} style={{ color: "#89b4fa", flexShrink: 0 }} />}
+            {note?.type === "table" && <Table2 size={11} style={{ color: "#a6e3a1", flexShrink: 0 }} />}
+            {note?.type === "canvas" && <Layers size={11} style={{ color: "#74c7ec", flexShrink: 0 }} />}
+            <span className="truncate flex-1" style={{ fontSize: 12 }}>{note?.title ?? "Untitled"}</span>
             {dirtyNoteIds?.has(id) && (
-              <span className="text-xs" style={{ color: "var(--color-obsidian-accent)", lineHeight: 1 }}>•</span>
+              <span style={{ color: "var(--color-obsidian-accent)", lineHeight: 1, fontSize: 14 }}>•</span>
             )}
             <button
-              className={`${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} hover:text-white transition-opacity rounded`}
+              className={`${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} hover:text-white hover:bg-white/10 transition-all rounded p-0.5 -mr-1`}
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
               aria-label="Close tab"
             >
-              <X size={12} />
+              <X size={11} />
             </button>
           </div>
         );
@@ -1245,8 +1269,8 @@ function Toolbar({
 
   const iconSize = isMobile ? 16 : 13;
   const btnClass = isMobile
-    ? "p-2 rounded hover:bg-white/10 transition-colors"
-    : "p-1.5 rounded hover:bg-white/10 transition-colors";
+    ? "p-2 rounded-md hover:bg-white/10 active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+    : "p-1.5 rounded-md hover:bg-white/[0.07] active:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]";
 
   const formattingInline = [
     { icon: Bold, title: "Bold", insert: "**bold**" },
@@ -1273,7 +1297,7 @@ function Toolbar({
     <>
     <div className="shrink-0" style={{ borderBottom: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}>
       {/* Row 1: View mode, note type, actions */}
-      <div className="editor-toolbar-row flex items-center gap-1 px-3 py-1 overflow-x-auto" style={{ scrollbarWidth: "none" }}>
+      <div className="editor-toolbar-row flex items-center gap-1 px-3 overflow-x-auto" style={{ scrollbarWidth: "none", height: 40 }}>
         {/* View mode — only for non-drawing notes */}
         {!isDrawing && (
           <>

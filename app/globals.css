@@ -288,6 +288,43 @@
     width: calc(100vw - 32px) !important;
     max-width: 360px !important;
   }
+
+  /* Make every actionable element inside the mobile drawer touch-friendly. */
+  .mobile-drawer button:not(.tap-target),
+  .mobile-drawer [role="button"]:not(.tap-target) {
+    min-height: 40px;
+  }
+
+  /* Sidebar note/folder rows feel cramped at default heights on touch. */
+  .mobile-drawer .note-row,
+  .mobile-drawer button[data-row="note"],
+  .mobile-drawer button[data-row="folder"] {
+    min-height: 44px;
+    padding-top: 8px;
+    padding-bottom: 8px;
+  }
+
+  /* Hide desktop-only inline-hover affordances on mobile so rows don't
+     appear half-broken (where icons only show on hover). */
+  .mobile-drawer .show-on-hover,
+  .mobile-drawer .group-hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+
+  /* The editor textarea and content-editable should fill width on phones
+     even when "readable line length" is enabled. */
+  .editor-content-area {
+    max-width: 100% !important;
+  }
+
+  /* Bigger title input on mobile so the active note title is legible. */
+  .editor-content-area input.editor-title {
+    font-size: 1.65rem !important;
+    margin-bottom: 4px;
+  }
+
+  /* Right panel inside drawer needs proper height. */
+  .mobile-drawer > div > div { min-height: 0; }
 }
 
 /* Safe area insets */

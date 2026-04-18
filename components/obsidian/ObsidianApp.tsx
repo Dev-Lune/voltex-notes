@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useCallback, useEffect, useRef } from "react";
+import React, { useState, useCallback, useEffect, useRef, useId } from "react";
 import dynamic from "next/dynamic";
 import {
-  AppState, Note, Folder, SAMPLE_NOTES, SAMPLE_FOLDERS,
+  AppState, Note, Folder, SAMPLE_NOTES, SAMPLE_FOLDERS, SAMPLE_NOTE_IDS,
   countWords, NoteType, THEMES, DEFAULT_PREFERENCES, EditorPreferences, applyTheme,
   Vault
 } from "./data";
@@ -13,6 +13,10 @@ import Editor from "./Editor";
 import RightPanel from "./RightPanel";
 import CommandPalette from "./CommandPalette";
 import AuthModal from "./AuthModal";
+import ConfirmDialog from "./ConfirmDialog";
+import PetCompanion from "./PetCompanion";
+import MobileDesktopHint from "./MobileDesktopHint";
+import { VoltexStage } from "../marketing/VoltexStage";
 import { SAMPLE_SNIPPETS } from "../../lib/marketplace/data";
 
 // Heavy components — lazy-loaded to reduce initial bundle
@@ -35,11 +39,11 @@ import { SyncService } from "@/lib/firebase/sync";
 import { isElectron, vaultClient, fsClient, windowClient, electronOn, updaterClient } from "@/lib/vault/client";
 import { noteToMarkdown, markdownToNote, noteFilePath } from "@/lib/vault/serializer";
 import {
-  X, Sparkles, FileEdit, Link2, Palette, Package,
-  Search as SearchIcon, CalendarDays as CalendarIcon,
-  FolderTree, History, Download, Command, Cloud,
-  Smartphone, BookOpen, FolderOpen, Check,
-  Info, Crown, Mail, User, Settings, LogIn, FileText, HardDrive,
+  X, FileEdit, Link2, Package,
+  Search as SearchIcon,
+  Command, Cloud,
+  BookOpen, FolderOpen, Check,
+  Crown, User, Settings, LogIn, FileText, HardDrive,
 } from "lucide-react";
 
 const INITIAL_STATE: AppState = {
@@ -87,23 +91,21 @@ const PLUGIN_HINTS: Record<string, string> = {
 };
 
 export default function ObsidianApp() {
-  const [state, setState] = useState<AppState>(() => {
-    // On Electron, start with empty state — loadVault will populate it
-    const electron = typeof window !== "undefined" && "electronAPI" in window;
-    if (electron) {
-      return {
-        ...INITIAL_STATE,
-        notes: [],
-        folders: [{ id: "root", name: "Vault", parentId: null }],
-        activeNoteId: null,
-        openNoteIds: [],
-      };
-    }
-    return INITIAL_STATE;
-  });
-  const historyRef = useRef<string[]>([SAMPLE_NOTES[0].id]);
+  // Initial render is always blank — both SSR and first client paint match.
+  // The first-run effect below reads localStorage and populates the real state
+  // before flipping `appReady`, which is what gates the UI render. This way no
+  // sample/onboarding notes ever flash before the user has chosen them.
+  const [state, setState] = useState<AppState>(() => ({
+    ...INITIAL_STATE,
+    notes: [],
+    folders: [{ id: "root", name: "Vault", parentId: null }],
+    activeNoteId: null,
+    openNoteIds: [],
+  }));
+  const historyRef = useRef<string[]>([]);
   const historyIdxRef = useRef(0);
   const mainRef = useRef<HTMLDivElement>(null);
+  const editorAreaRef = useRef<HTMLDivElement>(null);
   const syncServiceRef = useRef<SyncService | null>(null);
   const pushDebounceRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
   const stateRef = useRef(state);
@@ -126,6 +128,18 @@ export default function ObsidianApp() {
   const [pluginToast, setPluginToast] = useState<{ message: string; visible: boolean } | null>(null);
   const [vaultNameInput, setVaultNameInput] = useState<{ parentPath: string } | null>(null);
 
+  // ── Confirmation dialog (replaces native confirm()) ────────────────────────
+  type ConfirmState = {
+    title: string;
+    description?: React.ReactNode;
+    confirmLabel?: string;
+    tone?: "danger" | "warning" | "info";
+    requireTypedConfirmation?: string;
+    onConfirm: () => void;
+  };
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmState | null>(null);
+  const askConfirm = useCallback((cfg: ConfirmState) => setConfirmDialog(cfg), []);
+
   // ── Auto-updater state ─────────────────────────────────────────────────────
   const [updateReady, setUpdateReady] = useState<string | null>(null);
 
@@ -133,6 +147,9 @@ export default function ObsidianApp() {
   const [vaultPath, setVaultPath] = useState<string | null>(null);
   const [recentVaults, setRecentVaults] = useState<Array<{ path: string; name: string; lastOpened: number }>>([]);
   const vaultSaveTimerRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
+  // Tracks per-note "session start" content for version-history snapshotting.
+  // We snapshot when an editing session ends (user idle ≥ 30s, or large delta).
+  const versionSessionRef = useRef<Map<string, { baseContent: string; baseTitle: string; baseUpdatedAt: string; lastEditAt: number; idleTimer: ReturnType<typeof setTimeout> | null }>>(new Map());
   const fileWatcherCleanupRef = useRef<(() => void) | null>(null);
   const [dirtyNoteIds, setDirtyNoteIds] = useState<Set<string>>(new Set());
   const [syncPromptVisible, setSyncPromptVisible] = useState(false);
@@ -161,7 +178,9 @@ export default function ObsidianApp() {
   const saveWebVaultData = useCallback((vaultId: string, notes: Note[], folders: Folder[]) => {
     if (isElectron()) return;
     try {
-      localStorage.setItem(`voltex-vault-${vaultId}-notes`, JSON.stringify(notes));
+      // Never persist built-in onboarding/sample notes into a real vault.
+      const userNotes = notes.filter((n) => !SAMPLE_NOTE_IDS.has(n.id));
+      localStorage.setItem(`voltex-vault-${vaultId}-notes`, JSON.stringify(userNotes));
       localStorage.setItem(`voltex-vault-${vaultId}-folders`, JSON.stringify(folders));
     } catch { /* storage full */ }
   }, []);
@@ -183,20 +202,9 @@ export default function ObsidianApp() {
     if (isElectron()) return;
     const id = `vault-${Date.now()}`;
     const newVault: Vault = { id, name, createdAt: new Date().toISOString() };
-    const blankNote: Note = {
-      id: `note-${Date.now()}`,
-      title: "Untitled",
-      content: `# ${name}\n\nStart writing…`,
-      tags: [],
-      folder: "root",
-      createdAt: new Date().toISOString().split("T")[0],
-      updatedAt: new Date().toISOString().split("T")[0],
-      starred: false,
-      wordCount: 0,
-      type: "markdown",
-    };
-    const folders: Folder[] = [{ id: "root", name: "Vault", parentId: null }];
-    saveWebVaultData(id, [blankNote], folders);
+    // Start with an empty vault — the user creates their first note when ready.
+    const folders: Folder[] = [{ id: "root", name, parentId: null }];
+    saveWebVaultData(id, [], folders);
 
     const updated = [...webVaults, newVault];
     setWebVaults(updated);
@@ -305,23 +313,13 @@ export default function ObsidianApp() {
         openNoteIds: [notes[0].id],
       });
     } else {
-      const blankNote: Note = {
-        id: `note-${Date.now()}`,
-        title: "Untitled",
-        content: "# Untitled\n\nStart writing\u2026",
-        tags: [],
-        folder: "root",
-        createdAt: new Date().toISOString().split("T")[0],
-        updatedAt: new Date().toISOString().split("T")[0],
-        starred: false,
-        wordCount: 0,
-        type: "markdown",
-      };
+      // Leave the vault empty — do NOT auto-create an "Untitled" note. The user
+      // can use Ctrl/Cmd+N or the FAB to create their first note when ready.
       patch({
-        notes: [blankNote],
-        folders: [{ id: "root", name: "Vault", parentId: null }],
-        activeNoteId: blankNote.id,
-        openNoteIds: [blankNote.id],
+        notes: [],
+        folders: folders.length > 0 ? folders : [{ id: "root", name: "Vault", parentId: null }],
+        activeNoteId: null,
+        openNoteIds: [],
       });
     }
     setAppReady(true);
@@ -373,49 +371,54 @@ export default function ObsidianApp() {
     try {
       const welcomeDismissed = localStorage.getItem("voltex-welcome-dismissed");
       const workspaceConfigured = localStorage.getItem("voltex-workspace-configured");
+      const activeVaultId = localStorage.getItem("voltex-active-vault-id");
 
-      // If workspace was configured as "empty", initialize with blank state
-      if (workspaceConfigured === "empty") {
-        setState((prev) => {
-          // Only override if still using sample data (first mount)
-          if (prev.notes.length === SAMPLE_NOTES.length && prev.notes[0]?.id === SAMPLE_NOTES[0].id) {
-            const blankNote: Note = {
-              id: `note-${Date.now()}`,
-              title: "Untitled",
-              content: "# Untitled\n\nStart writing…",
-              tags: [],
-              folder: "root",
-              createdAt: new Date().toISOString().split("T")[0],
-              updatedAt: new Date().toISOString().split("T")[0],
-              starred: false,
-              wordCount: 0,
-              type: "markdown",
-            };
-            return {
-              ...prev,
-              notes: [blankNote],
-              folders: [{ id: "root", name: "Vault", parentId: null }],
-              activeNoteId: blankNote.id,
-              openNoteIds: [blankNote.id],
-            };
-          }
-          return prev;
-        });
+      // 1) Active web vault → hydrate its notes/folders.
+      if (activeVaultId) {
+        const data = loadWebVaultData(activeVaultId);
+        if (data && data.notes.length > 0) {
+          const liveNotes = data.notes.filter((n) => !n.trashed);
+          const first = liveNotes[0] ?? data.notes[0];
+          setState((prev) => ({
+            ...prev,
+            notes: data.notes,
+            folders: data.folders,
+            activeNoteId: first?.id ?? null,
+            openNoteIds: first ? [first.id] : [],
+            mainView: first?.type === "canvas" ? "canvas" : "editor",
+            activeVaultId,
+          }));
+          setAppReady(true);
+          return;
+        }
       }
 
-      if (!welcomeDismissed && !workspaceConfigured) {
-        // Brand new user — show welcome first
-        setWelcomeModalOpen(true);
-      } else if (welcomeDismissed && !workspaceConfigured) {
-        // Welcome was dismissed but workspace not configured yet
-        setWorkspaceSetupOpen(true);
-      } else {
+      // 2) Returning user who chose "docs" → re-seed sample notes.
+      if (workspaceConfigured === "docs") {
+        setState((prev) => ({
+          ...prev,
+          notes: SAMPLE_NOTES,
+          folders: SAMPLE_FOLDERS,
+          activeNoteId: SAMPLE_NOTES[0].id,
+          openNoteIds: [SAMPLE_NOTES[0].id, SAMPLE_NOTES[1]?.id, SAMPLE_NOTES[2]?.id].filter(Boolean) as string[],
+        }));
         setAppReady(true);
+        return;
       }
+
+      // 3) Workspace was set to empty, or welcome was previously dismissed →
+      //    leave the blank state from the initializer in place.
+      if (workspaceConfigured === "empty" || welcomeDismissed) {
+        setAppReady(true);
+        return;
+      }
+
+      // 4) Brand-new visitor → show welcome dialog (state stays blank).
+      setWelcomeModalOpen(true);
     } catch {
       setAppReady(true);
     }
-  }, []);
+  }, [loadWebVaultData]);
 
   // Auto-collapse right panel on small desktop viewports
   useEffect(() => {
@@ -455,8 +458,22 @@ export default function ObsidianApp() {
       if (saved && THEMES.find((t) => t.id === saved)) {
         patch({ activeThemeId: saved });
       }
+      const petEnabledRaw = localStorage.getItem("voltex-pet-enabled");
+      const petType = localStorage.getItem("voltex-pet-type");
+      const petPatch: Partial<AppState> = {};
+      if (petEnabledRaw !== null) petPatch.petEnabled = petEnabledRaw === "true";
+      if (petType) petPatch.petType = petType as AppState["petType"];
+      if (Object.keys(petPatch).length) patch(petPatch);
     } catch { /* ignore */ }
   }, [patch]);
+
+  // Persist pet settings whenever they change.
+  useEffect(() => {
+    try {
+      localStorage.setItem("voltex-pet-enabled", state.petEnabled ? "true" : "false");
+      if (state.petType) localStorage.setItem("voltex-pet-type", state.petType);
+    } catch { /* ignore */ }
+  }, [state.petEnabled, state.petType]);
 
   // Restore Firebase auth session on mount
   useEffect(() => {
@@ -481,7 +498,8 @@ export default function ObsidianApp() {
               syncStatus: "syncing",
             });
 
-            // Load theme from Firestore
+            // Load theme + workspace preference from Firestore.
+            // Account-level preferences win over local session.
             try {
               const db = getFirebaseDb();
               if (db) {
@@ -490,6 +508,35 @@ export default function ObsidianApp() {
                   const data = prefSnap.data();
                   if (data.activeThemeId && THEMES.find((t) => t.id === data.activeThemeId)) {
                     patch({ activeThemeId: data.activeThemeId });
+                  }
+                  // Workspace choice: "docs" or "empty"
+                  if (data.workspaceChoice === "empty" || data.workspaceChoice === "docs") {
+                    try { localStorage.setItem("voltex-workspace-configured", data.workspaceChoice); } catch { /* ignore */ }
+                    if (data.workspaceChoice === "empty") {
+                      // Strip any sample/doc notes that were seeded pre-login.
+                      setState((prev) => {
+                        const userNotes = prev.notes.filter((n) => !SAMPLE_NOTE_IDS.has(n.id));
+                        if (userNotes.length === prev.notes.length) return prev;
+                        const first = userNotes[0];
+                        return {
+                          ...prev,
+                          notes: userNotes,
+                          activeNoteId: first?.id ?? null,
+                          openNoteIds: first ? [first.id] : [],
+                        };
+                      });
+                    }
+                  } else {
+                    // No saved choice yet → persist whatever the local session picked.
+                    const localChoice = (() => { try { return localStorage.getItem("voltex-workspace-configured"); } catch { return null; } })();
+                    if (localChoice === "docs" || localChoice === "empty") {
+                      const { setDoc } = await import("firebase/firestore");
+                      await setDoc(
+                        doc(db, "users", fbUser.uid, "settings", "preferences"),
+                        { workspaceChoice: localChoice },
+                        { merge: true }
+                      );
+                    }
                   }
                 }
               }
@@ -968,33 +1015,84 @@ export default function ObsidianApp() {
   const updateNote = useCallback(
     (id: string, noteP: Partial<Note>) => {
       let updatedNote: Note | null = null;
+      // Decide once whether this update should affect version history. We only
+      // snapshot for actual *content* edits — never for tag/star/folder churn,
+      // and never if the user has disabled history.
+      const prevState = stateRef.current;
+      const prevNote = prevState.notes.find((n) => n.id === id);
+      const historyEnabled = prevState.preferences?.versionHistoryEnabled !== false;
+      const contentChanged = typeof noteP.content === "string" && prevNote && noteP.content !== prevNote.content;
+      const titleChanged = typeof noteP.title === "string" && prevNote && noteP.title !== prevNote.title;
+
+      if (historyEnabled && prevNote && (contentChanged || titleChanged)) {
+        const sessions = versionSessionRef.current;
+        let session = sessions.get(id);
+        if (!session) {
+          // Open a new editing session; remember pre-edit state.
+          session = {
+            baseContent: prevNote.content,
+            baseTitle: prevNote.title,
+            baseUpdatedAt: prevNote.updatedAt,
+            lastEditAt: Date.now(),
+            idleTimer: null,
+          };
+          sessions.set(id, session);
+        }
+        session.lastEditAt = Date.now();
+        if (session.idleTimer) clearTimeout(session.idleTimer);
+
+        const commitSnapshot = () => {
+          const sess = versionSessionRef.current.get(id);
+          if (!sess) return;
+          versionSessionRef.current.delete(id);
+          // Only snapshot if there's a meaningful diff between base and current.
+          setState((prev) => ({
+            ...prev,
+            notes: prev.notes.map((n) => {
+              if (n.id !== id) return n;
+              const meaningful = n.content !== sess.baseContent || n.title !== sess.baseTitle;
+              if (!meaningful) return n;
+              const history = n.versionHistory ?? [];
+              // Skip if the latest snapshot already matches base content.
+              if (history[0]?.content === sess.baseContent) return n;
+              const snapshot = {
+                id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+                content: sess.baseContent,
+                title: sess.baseTitle,
+                savedAt: new Date().toISOString(),
+                updatedAt: sess.baseUpdatedAt,
+              };
+              return {
+                ...n,
+                versionHistory: [snapshot, ...history].slice(0, MAX_NOTE_VERSIONS),
+              };
+            }),
+          }));
+        };
+
+        // Commit if huge delta (≥ 400 chars change) — protects against losing
+        // a big edit if the tab is closed before idle fires.
+        const draftContent = (noteP.content as string | undefined) ?? prevNote.content;
+        if (Math.abs(draftContent.length - session.baseContent.length) > 400) {
+          // Schedule commit on next tick so it sees the updated state.
+          setTimeout(commitSnapshot, 0);
+        } else {
+          // Otherwise commit when the user has been idle for 30 seconds.
+          session.idleTimer = setTimeout(commitSnapshot, 30000);
+        }
+      }
+
       setState((prev) => ({
         ...prev,
         notes: prev.notes.map((n) => {
           if (n.id !== id) return n;
-
           const nextContent = noteP.content ?? n.content;
-          const contentChanged = typeof noteP.content === "string" && noteP.content !== n.content;
-          const history = n.versionHistory ?? [];
-
-          const nextHistory = contentChanged
-            ? [
-                {
-                  id: `v-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-                  content: n.content,
-                  title: n.title,
-                  savedAt: new Date().toISOString(),
-                  updatedAt: n.updatedAt,
-                },
-                ...history,
-              ].slice(0, MAX_NOTE_VERSIONS)
-            : history;
-
           const result = {
             ...n,
             ...noteP,
             wordCount: countWords(nextContent),
-            versionHistory: nextHistory,
+            // Note: versionHistory is only updated by the commitSnapshot path
+            // above; do NOT touch it here, otherwise we'd snapshot every keystroke.
           };
           updatedNote = result;
           return result;
@@ -1196,12 +1294,7 @@ export default function ObsidianApp() {
     patch({ user: null, syncStatus: "offline", settingsOpen: false });
   }, [patch]);
 
-  const handleDeleteAllData = useCallback(async () => {
-    const confirmed = confirm(
-      "Delete all notes, folders, local vault data, and synced cloud data? This cannot be undone and will close the current vault."
-    );
-    if (!confirmed) return;
-
+  const performDeleteAllData = useCallback(async () => {
     const currentState = stateRef.current;
 
     try {
@@ -1296,6 +1389,25 @@ export default function ObsidianApp() {
       alert("Failed to delete all data. Please try again.");
     }
   }, [vaultPath]);
+
+  const handleDeleteAllData = useCallback(() => {
+    askConfirm({
+      title: "Delete everything?",
+      description: (
+        <>
+          This permanently deletes <strong>all notes, folders, local vault data, and synced cloud data</strong>.
+          The current vault will be closed and this action cannot be undone.
+        </>
+      ),
+      confirmLabel: "Delete everything",
+      tone: "danger",
+      requireTypedConfirmation: "delete",
+      onConfirm: async () => {
+        setConfirmDialog(null);
+        await performDeleteAllData();
+      },
+    });
+  }, [askConfirm, performDeleteAllData]);
 
   // Theme change handler
   const handleThemeChange = useCallback((themeId: string) => {
@@ -1527,10 +1639,18 @@ export default function ObsidianApp() {
       if (ctrl && e.key === "d") {
         e.preventDefault();
         if (s.activeNoteId) {
-          const noteTitle = s.notes.find((n) => n.id === s.activeNoteId)?.title ?? "this note";
-          if (confirm(`Move "${noteTitle}" to trash?`)) {
-            deleteNoteRef.current(s.activeNoteId);
-          }
+          const id = s.activeNoteId;
+          const noteTitle = s.notes.find((n) => n.id === id)?.title ?? "this note";
+          askConfirm({
+            title: "Move note to trash?",
+            description: <>You can restore <strong>&quot;{noteTitle}&quot;</strong> from the Trash view.</>,
+            confirmLabel: "Move to trash",
+            tone: "warning",
+            onConfirm: () => {
+              deleteNoteRef.current(id);
+              setConfirmDialog(null);
+            },
+          });
         }
       }
       if (ctrl && e.key === "a") {
@@ -1564,6 +1684,26 @@ export default function ObsidianApp() {
   }, [patch, isMobile]);
 
   const activeNote = state.notes.find((n) => n.id === state.activeNoteId);
+
+  // Show a minimal loading shell until first-run hydration is complete OR
+  // an onboarding dialog (welcome / workspace setup) is showing. This prevents
+  // any flash of sample notes / wrong workspace state on refresh.
+  if (!appReady && !welcomeModalOpen && !workspaceSetupOpen) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-screen w-screen gap-3"
+        style={{ background: "var(--color-obsidian-bg)", color: "var(--color-obsidian-muted-text)" }}
+        aria-busy="true"
+        aria-live="polite"
+      >
+        <div
+          className="w-6 h-6 rounded-full border-2 border-t-transparent animate-spin"
+          style={{ borderColor: "var(--color-obsidian-accent)", borderTopColor: "transparent" }}
+        />
+        <p className="text-xs tracking-wide uppercase opacity-70">Loading vault</p>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -1680,12 +1820,13 @@ export default function ObsidianApp() {
               onOpenRecent={isElectron() ? async (recentPath) => {
                 await openVaultWithPrompt(recentPath);
               } : undefined}
+              onConfirm={askConfirm}
             />
           </div>
         )}
 
         {/* Center — editor or graph */}
-        <div className="flex-1 overflow-hidden" style={{ paddingBottom: isMobile ? 80 : 0, minWidth: isMobile ? undefined : 400 }}>
+        <div ref={editorAreaRef} className="flex-1 overflow-hidden relative" style={{ paddingBottom: isMobile ? 80 : 0, minWidth: isMobile ? undefined : 400 }}>
           {state.mainView === "editor" ? (
             <Editor
               state={state}
@@ -1745,6 +1886,16 @@ export default function ObsidianApp() {
               isMobile={isMobile}
             />
           )}
+
+          {/* Pet companion — roams the editor area when enabled in settings. */}
+          {!isMobile && state.petEnabled && (
+            <PetCompanion
+              type={state.petType ?? "cat"}
+              containerRef={editorAreaRef}
+              enabled
+              zIndex={20}
+            />
+          )}
         </div>
 
         {/* Desktop Right panel */}
@@ -1799,6 +1950,7 @@ export default function ObsidianApp() {
             setMobileDrawerOpen(false);
             setVaultNameInput({ parentPath: "" });
           } : undefined}
+          onConfirm={askConfirm}
         />
       </MobileDrawer>
 
@@ -1826,6 +1978,9 @@ export default function ObsidianApp() {
         onNavigate={handleMobileNavigate}
         onNewNoteMenu={() => setMobileNewNoteMenuOpen(true)}
       />
+
+      {/* Mobile-only "more on desktop" hint */}
+      {isMobile && <MobileDesktopHint />}
 
       {/* Mobile New Note Menu */}
       <NewNoteMenu
@@ -1906,6 +2061,7 @@ export default function ObsidianApp() {
             patch({ settingsOpen: false });
             setVaultNameInput({ parentPath: "" });
           } : undefined}
+          onAppStateChange={(p) => patch(p)}
         />
       )}
 
@@ -1996,6 +2152,19 @@ export default function ObsidianApp() {
         <WorkspaceSetupDialog
           onSelect={(choice) => {
             try { localStorage.setItem("voltex-workspace-configured", choice); } catch { /* ignore */ }
+            // Persist to cloud if signed in
+            const uid = state.user?.uid;
+            if (uid) {
+              (async () => {
+                try {
+                  const { getFirebaseDb } = await import("@/lib/firebase/config");
+                  const db = getFirebaseDb();
+                  if (!db) return;
+                  const { doc, setDoc } = await import("firebase/firestore");
+                  await setDoc(doc(db, "users", uid, "settings", "preferences"), { workspaceChoice: choice }, { merge: true });
+                } catch { /* ignore */ }
+              })();
+            }
             setWorkspaceSetupOpen(false);
             if (choice === "empty") {
               const blankNote: Note = {
@@ -2017,15 +2186,38 @@ export default function ObsidianApp() {
                 activeNoteId: blankNote.id,
                 openNoteIds: [blankNote.id],
               }));
+            } else {
+              // Seed sample/onboarding notes (only on explicit "docs" choice).
+              setState((prev) => ({
+                ...prev,
+                notes: SAMPLE_NOTES,
+                folders: SAMPLE_FOLDERS,
+                activeNoteId: SAMPLE_NOTES[0].id,
+                openNoteIds: [SAMPLE_NOTES[0].id, SAMPLE_NOTES[1].id, SAMPLE_NOTES[2].id].filter(Boolean),
+              }));
             }
             setAppReady(true);
           }}
         />
       )}
 
+      {/* Confirmation dialog (replaces native confirm) */}
+      <ConfirmDialog
+        open={confirmDialog !== null}
+        title={confirmDialog?.title ?? ""}
+        description={confirmDialog?.description}
+        confirmLabel={confirmDialog?.confirmLabel}
+        tone={confirmDialog?.tone}
+        requireTypedConfirmation={confirmDialog?.requireTypedConfirmation}
+        onConfirm={() => confirmDialog?.onConfirm()}
+        onCancel={() => setConfirmDialog(null)}
+      />
+
       {/* Plugin install toast notification */}
       {pluginToast && (
         <div
+          role="status"
+          aria-live="polite"
           className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[9999] max-w-md px-4 py-3 rounded-xl shadow-2xl flex items-start gap-3 transition-all duration-500"
           style={{
             background: "var(--color-obsidian-surface)",
@@ -2035,56 +2227,94 @@ export default function ObsidianApp() {
             transform: `translateX(-50%) translateY(${pluginToast.visible ? "0" : "20px"})`,
           }}
         >
-          <span style={{ color: "var(--color-obsidian-accent)", fontSize: "18px", lineHeight: 1, marginTop: "1px" }}>✓</span>
-          <p className="text-sm leading-snug" style={{ color: "var(--color-obsidian-text)" }}>
+          <span aria-hidden="true" style={{ color: "var(--color-obsidian-accent)", fontSize: "18px", lineHeight: 1, marginTop: "1px" }}>✓</span>
+          <p className="text-sm leading-snug flex-1" style={{ color: "var(--color-obsidian-text)" }}>
             {pluginToast.message}
           </p>
+          <button
+            onClick={() => setPluginToast(null)}
+            className="shrink-0 p-0.5 rounded hover:bg-white/10 transition-colors"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+            aria-label="Dismiss notification"
+          >
+            <X size={14} />
+          </button>
         </div>
       )}
 
       {/* Vault sync prompt */}
       {syncPromptVisible && (
         <div
-          className="fixed bottom-6 left-1/2 z-[9999] max-w-sm px-4 py-3 rounded-xl shadow-2xl flex items-center gap-3"
-          style={{
-            transform: "translateX(-50%)",
-            background: "var(--color-obsidian-surface)",
-            border: "1px solid var(--color-obsidian-border)",
-            boxShadow: "0 8px 32px rgba(0,0,0,0.4)",
-          }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ background: "rgba(6,7,12,0.6)", backdropFilter: "blur(6px)", animation: "fadeIn 0.18s ease" }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="sync-prompt-title"
         >
-          <Cloud size={18} style={{ color: "var(--color-obsidian-accent)", flexShrink: 0 }} />
-          <span className="text-sm" style={{ color: "var(--color-obsidian-text)" }}>
-            Sync <strong>{vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() : "vault"}</strong> to cloud?
-          </span>
-          <button
-            className="px-3 py-1 rounded-md text-xs font-medium"
-            style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
-            onClick={async () => {
-              setSyncPromptVisible(false);
-              if (syncServiceRef.current) {
-                patch({ syncStatus: "syncing" });
-                await syncServiceRef.current.syncAll(state.notes);
-                // Also push folder metadata
-                await syncServiceRef.current.pushFolders(state.folders);
-                // Mark all current folders as synced
-                const syncedIds = state.folders.filter(f => f.id !== "root").map(f => f.id);
-                patch({
-                  syncedFolderIds: syncedIds,
-                  folders: state.folders.map(f => f.id === "root" ? f : { ...f, synced: true }),
-                });
-              }
+          <div
+            className="w-full max-w-md rounded-2xl overflow-hidden"
+            style={{
+              background: "var(--color-obsidian-surface)",
+              border: "1px solid var(--color-obsidian-border)",
+              boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+              animation: "scaleIn 0.22s cubic-bezier(.2,.8,.2,1)",
             }}
           >
-            Sync
-          </button>
-          <button
-            className="px-2 py-1 rounded-md text-xs"
-            style={{ color: "var(--color-obsidian-muted-text)" }}
-            onClick={() => setSyncPromptVisible(false)}
-          >
-            Dismiss
-          </button>
+            <div className="p-6">
+              <div
+                className="w-12 h-12 rounded-xl flex items-center justify-center mb-4"
+                style={{ background: "color-mix(in srgb, var(--color-obsidian-accent) 14%, transparent)" }}
+              >
+                <Cloud size={24} style={{ color: "var(--color-obsidian-accent)" }} />
+              </div>
+              <h3
+                id="sync-prompt-title"
+                className="text-xl font-semibold mb-1"
+                style={{ color: "var(--color-obsidian-text)" }}
+              >
+                Sync this vault to the cloud?
+              </h3>
+              <p className="text-sm mb-1" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                <strong style={{ color: "var(--color-obsidian-text)" }}>{vaultPath ? vaultPath.replace(/\\/g, "/").split("/").pop() : "Untitled vault"}</strong>
+              </p>
+              <p className="text-xs mb-5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Sync keeps your notes encrypted and available across every device. You can change this anytime in Settings → Cloud Sync.
+              </p>
+              <div className="flex flex-col-reverse sm:flex-row gap-2">
+                <button
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-medium transition-colors"
+                  style={{
+                    background: "transparent",
+                    color: "var(--color-obsidian-muted-text)",
+                    border: "1px solid var(--color-obsidian-border)",
+                  }}
+                  onClick={() => setSyncPromptVisible(false)}
+                >
+                  Keep local only
+                </button>
+                <button
+                  className="flex-1 px-4 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                  style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                  autoFocus
+                  onClick={async () => {
+                    setSyncPromptVisible(false);
+                    if (syncServiceRef.current) {
+                      patch({ syncStatus: "syncing" });
+                      await syncServiceRef.current.syncAll(state.notes);
+                      await syncServiceRef.current.pushFolders(state.folders);
+                      const syncedIds = state.folders.filter(f => f.id !== "root").map(f => f.id);
+                      patch({
+                        syncedFolderIds: syncedIds,
+                        folders: state.folders.map(f => f.id === "root" ? f : { ...f, synced: true }),
+                      });
+                    }
+                  }}
+                >
+                  Sync to cloud
+                </button>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
@@ -2094,16 +2324,12 @@ export default function ObsidianApp() {
 // ─── WelcomeModal (private sub-component) ─────────────────────────────────────
 
 const WELCOME_FEATURES = [
-  { icon: FileEdit, title: "Markdown Editor", desc: "Inline editor with live split preview and syntax highlighting" },
-  { icon: Link2, title: "Bidirectional Wikilinks", desc: "Connect notes with [[wikilinks]] and explore your knowledge graph" },
-  { icon: Palette, title: "9+ Themes", desc: "Dark & light themes with a custom color editor for full control" },
-  { icon: Package, title: "Plugin Marketplace", desc: "Excalidraw, Kanban, AI Assistant, and community plugins" },
-  { icon: SearchIcon, title: "Tags & Search", desc: "Tags, bookmarks, and full-text search across your entire vault" },
-  { icon: CalendarIcon, title: "Daily Notes", desc: "Templated daily journal entries with one-click creation" },
-  { icon: FolderTree, title: "Folder Organization", desc: "Drag-and-drop folder tree with nested hierarchy support" },
-  { icon: History, title: "Version History", desc: "Automatic snapshots with one-click rollback to any version" },
-  { icon: Download, title: "Export as ZIP", desc: "Download your entire vault as a portable ZIP archive" },
-  { icon: Command, title: "Keyboard Shortcuts", desc: "Ctrl+P command palette, Ctrl+N new note, and many more" },
+  { icon: FileEdit, title: "Live Markdown", desc: "Inline editor with split preview and syntax highlighting." },
+  { icon: Link2, title: "Wikilinks & Graph", desc: "Connect [[notes]] and watch your knowledge form a map." },
+  { icon: Cloud, title: "Real-time Sync", desc: "Encrypted, cross-device sync — fully offline-first." },
+  { icon: Package, title: "Plugins & Themes", desc: "Excalidraw, Kanban, daily notes, 9+ themes — your call." },
+  { icon: SearchIcon, title: "Search Everything", desc: "Tags, bookmarks, full-text search across the vault." },
+  { icon: Command, title: "Keyboard-first", desc: "Ctrl+P palette, Ctrl+N new, and the rest of muscle memory." },
 ] as const;
 
 interface WelcomeModalProps {
@@ -2116,138 +2342,223 @@ interface WelcomeModalProps {
   onOpenRecent?: (vaultPath: string) => void;
 }
 function WelcomeModal({ onDismiss, onSignIn, user, onOpenVault, onCreateVault, recentVaults, onOpenRecent }: WelcomeModalProps) {
+  const titleId = useId();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const dismissBtnRef = useRef<HTMLButtonElement>(null);
+  const isElectronCtx = !!(onOpenVault || onCreateVault);
+
+  // Focus management + escape (Escape is already wired globally, but we still need focus)
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    setTimeout(() => dismissBtnRef.current?.focus(), 0);
+    return () => { previouslyFocused?.focus?.(); };
+  }, []);
+
+  const initial = (user?.displayName?.trim()?.charAt(0) || user?.email?.trim()?.charAt(0) || "?").toUpperCase();
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ backdropFilter: "blur(8px)", background: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6"
+      style={{ backdropFilter: "blur(10px)", background: "rgba(6,7,12,0.72)", animation: "fadeIn 0.2s ease" }}
+      onClick={onDismiss}
     >
       <div
-        className="relative w-full max-w-5xl mx-4 rounded-2xl overflow-hidden"
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="welcome-modal-card relative w-full max-w-6xl rounded-[20px] overflow-hidden"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
-          animation: "scaleIn 0.3s ease",
-          maxHeight: "calc(100dvh - 32px)",
+          boxShadow: "0 32px 80px rgba(0,0,0,0.55), 0 0 0 1px rgba(167,139,250,0.08)",
+          animation: "scaleIn 0.28s cubic-bezier(.2,.8,.2,1)",
+          maxHeight: "calc(100dvh - 24px)",
         }}
+        onClick={(e) => e.stopPropagation()}
       >
         {/* Close button */}
         <button
+          ref={dismissBtnRef}
           onClick={onDismiss}
-          className="absolute top-4 right-4 p-2 rounded-lg transition-colors z-10 hover:bg-white/10"
-          style={{ color: "var(--color-obsidian-muted-text)" }}
-          aria-label="Close"
+          className="absolute top-3 right-3 p-2 rounded-lg transition-colors z-30 hover:bg-white/10"
+          style={{ color: "rgba(244,240,230,0.65)" }}
+          aria-label="Close welcome dialog"
         >
           <X size={18} />
         </button>
 
-        <div className="flex flex-col md:flex-row" style={{ maxHeight: "calc(100dvh - 34px)", overflowY: "auto" }}>
-          {/* Left — Features */}
-          <div className="flex-1 p-6 md:p-8 overflow-y-auto" style={{ borderRight: "1px solid var(--color-obsidian-border)" }}>
-            {/* Mini hero */}
-            <div className="flex items-center gap-3 mb-5">
-              <div
-                className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-                style={{ background: "var(--color-obsidian-accent)" }}
-              >
-                <Sparkles size={20} color="#fff" />
-              </div>
-              <div>
-                <h1 className="text-xl font-bold leading-tight" style={{ color: "var(--color-obsidian-text)" }}>
-                  Welcome to Voltex Notes
-                </h1>
-                <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                  Your personal knowledge base — supercharged
-                </p>
-              </div>
-            </div>
-
-            {/* Feature list */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {WELCOME_FEATURES.map((f) => (
-                <div
-                  key={f.title}
-                  className="flex items-start gap-2.5 p-2.5 rounded-lg"
-                  style={{ background: "var(--color-obsidian-bg)" }}
+        <div className="grid grid-cols-1 lg:grid-cols-[1.05fr_1fr]" style={{ maxHeight: "calc(100dvh - 26px)", overflowY: "auto" }}>
+          {/* ── Left: Editorial hero with VoltexStage ── */}
+          <div
+            className="relative flex flex-col justify-between p-6 sm:p-8 lg:p-10 min-h-[420px] lg:min-h-[640px]"
+            style={{
+              background: "rgb(8 8 14)",
+              borderRight: "1px solid var(--color-obsidian-border)",
+            }}
+          >
+            {/* Brand row */}
+            <div className="relative z-10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span
+                  className="font-mono text-[10px] uppercase tracking-[0.28em]"
+                  style={{ color: "rgba(244,240,230,0.55)" }}
                 >
-                  <div
-                    className="shrink-0 mt-px p-1.5 rounded-md"
-                    style={{ background: "var(--color-obsidian-surface-2)" }}
-                  >
-                    <f.icon size={15} style={{ color: "var(--color-obsidian-accent)" }} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold" style={{ color: "var(--color-obsidian-text)" }}>
-                      {f.title}
-                    </p>
-                    <p className="text-xs mt-0.5 leading-snug" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                      {f.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                  voltex / notes
+                </span>
+                <span
+                  className="font-mono text-[10px] tracking-[0.18em] px-1.5 py-0.5 rounded-sm"
+                  style={{ background: "rgba(167,139,250,0.12)", color: "#a78bfa" }}
+                >
+                  v1.3
+                </span>
+              </div>
+              <span
+                className="hidden sm:inline-block font-mono text-[10px] uppercase tracking-[0.22em]"
+                style={{ color: "rgba(244,240,230,0.4)" }}
+              >
+                est. 2025 · open-source
+              </span>
             </div>
 
-            {/* Mobile callout */}
-            <div className="flex items-center gap-2 mt-4">
-              <Smartphone size={14} style={{ color: "var(--color-obsidian-muted-text)" }} />
-              <p className="text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                Works beautifully on mobile with gestures and bottom nav
+            {/* Headline */}
+            <div className="relative z-10 mt-8 lg:mt-12">
+              <h1
+                id={titleId}
+                className="text-[40px] sm:text-[52px] lg:text-[64px] leading-[0.95] tracking-tight"
+                style={{
+                  fontFamily: "var(--font-fraunces), Georgia, serif",
+                  color: "#f4f0e6",
+                  fontWeight: 400,
+                }}
+              >
+                Your second
+                <br />
+                <em
+                  style={{
+                    fontStyle: "italic",
+                    fontWeight: 500,
+                    background: "linear-gradient(120deg, #a78bfa 0%, #22d3ee 100%)",
+                    WebkitBackgroundClip: "text",
+                    WebkitTextFillColor: "transparent",
+                    backgroundClip: "text",
+                  }}
+                >
+                  brain.
+                </em>
+              </h1>
+              <p
+                className="mt-4 max-w-md text-sm sm:text-base leading-relaxed"
+                style={{ color: "rgba(244,240,230,0.65)", fontFamily: "var(--font-fraunces), Georgia, serif" }}
+              >
+                Markdown, wikilinks, real-time sync, plugins. Local files you actually own — with the polish you wish Obsidian had.
               </p>
+            </div>
+
+            {/* Stage */}
+            <div className="relative z-0 my-6 lg:my-8 h-[260px] sm:h-[320px] lg:h-[360px]">
+              <VoltexStage active />
+            </div>
+
+            {/* Footer line */}
+            <div className="relative z-10 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <span className="h-1.5 w-1.5 rounded-full" style={{ background: "#a78bfa", boxShadow: "0 0 12px #a78bfa" }} aria-hidden="true" />
+                <span
+                  className="font-mono text-[10px] uppercase tracking-[0.22em]"
+                  style={{ color: "rgba(244,240,230,0.6)" }}
+                >
+                  ready when you are
+                </span>
+              </div>
+              <span
+                className="font-mono text-[10px] uppercase tracking-[0.22em]"
+                style={{ color: "rgba(244,240,230,0.35)" }}
+              >
+                {isElectronCtx ? "desktop" : "web"} edition
+              </span>
             </div>
           </div>
 
-          {/* Right — Vault + Account */}
+          {/* ── Right: Action panel ── */}
           <div
-            className="w-full md:w-72 shrink-0 p-6 md:p-8 flex flex-col gap-4"
-            style={{ background: "var(--color-obsidian-bg)" }}
+            className="flex flex-col p-6 sm:p-8 lg:p-10 gap-6"
+            style={{ background: "var(--color-obsidian-surface)" }}
           >
-            {/* ── Vault section (Electron) — always first ── */}
-            {(onOpenVault || onCreateVault) && (
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                  Open a Vault
-                </p>
+            {/* Vault section (Electron) */}
+            {isElectronCtx && (
+              <section aria-labelledby="vault-heading">
+                <div className="flex items-center justify-between mb-3">
+                  <h2
+                    id="vault-heading"
+                    className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+                    style={{ color: "var(--color-obsidian-muted-text)" }}
+                  >
+                    01 — Vault
+                  </h2>
+                  <span
+                    className="font-mono text-[10px] uppercase tracking-[0.18em]"
+                    style={{ color: "var(--color-obsidian-muted-text)" }}
+                  >
+                    local files
+                  </span>
+                </div>
+
                 {onOpenVault && (
                   <button
                     onClick={onOpenVault}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-semibold mb-2 text-left transition-opacity hover:opacity-90"
-                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                    className="welcome-action-primary w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-semibold mb-2 text-left transition-all"
+                    style={{
+                      background: "linear-gradient(135deg, #a78bfa 0%, #7c6af7 100%)",
+                      color: "#fff",
+                      boxShadow: "0 8px 24px rgba(124,106,247,0.35)",
+                    }}
                   >
-                    <FolderOpen size={16} />
-                    <div>
-                      <div>Open Folder…</div>
-                      <div className="text-xs font-normal opacity-80">Open an existing Markdown folder</div>
+                    <FolderOpen size={18} className="shrink-0" />
+                    <div className="min-w-0">
+                      <div className="leading-tight">Open Folder…</div>
+                      <div className="text-[11px] font-normal opacity-85 mt-0.5">Use any existing markdown folder</div>
                     </div>
                   </button>
                 )}
                 {onCreateVault && (
                   <button
                     onClick={onCreateVault}
-                    className="w-full flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-medium mb-2 text-left transition-colors hover:bg-white/5"
+                    className="w-full flex items-center gap-3 px-4 py-3.5 rounded-xl text-sm font-medium text-left transition-colors hover:bg-white/[0.04]"
                     style={{ border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
                   >
-                    <HardDrive size={16} style={{ color: "var(--color-obsidian-accent)", flexShrink: 0 }} />
-                    <div>
-                      <div>Create New Vault…</div>
-                      <div className="text-xs opacity-60">Start fresh in a new folder</div>
+                    <HardDrive size={18} style={{ color: "var(--color-obsidian-accent)" }} className="shrink-0" />
+                    <div className="min-w-0">
+                      <div className="leading-tight">Create New Vault…</div>
+                      <div className="text-[11px] font-normal mt-0.5" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                        Start fresh in a new folder
+                      </div>
                     </div>
                   </button>
                 )}
+
                 {recentVaults && recentVaults.length > 0 && (
-                  <div className="mt-1">
-                    <p className="text-xs font-medium mb-1.5 px-1" style={{ color: "var(--color-obsidian-muted-text)" }}>Recent vaults</p>
-                    <div className="flex flex-col gap-0.5">
+                  <div className="mt-4">
+                    <p
+                      className="text-[10px] font-semibold uppercase tracking-[0.22em] mb-2 px-1"
+                      style={{ color: "var(--color-obsidian-muted-text)" }}
+                    >
+                      Recent
+                    </p>
+                    <div className="flex flex-col gap-0.5 max-h-[120px] overflow-y-auto scrollbar-thin">
                       {recentVaults.map((v) => (
                         <button
                           key={v.path}
                           onClick={() => onOpenRecent?.(v.path)}
-                          className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-xs text-left transition-colors hover:bg-white/5"
+                          className="w-full flex items-center gap-2 px-2.5 py-1.5 rounded-md text-xs text-left transition-colors hover:bg-white/[0.04]"
                           style={{ color: "var(--color-obsidian-text)" }}
                           title={v.path}
                         >
-                          <FolderOpen size={12} style={{ color: "var(--color-obsidian-muted-text)", flexShrink: 0 }} />
+                          <FolderOpen size={12} style={{ color: "var(--color-obsidian-muted-text)" }} className="shrink-0" />
                           <span className="truncate">{v.name}</span>
-                          <span className="ml-auto shrink-0 text-xs" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                          <span
+                            className="ml-auto shrink-0 text-[10px] tabular-nums"
+                            style={{ color: "var(--color-obsidian-muted-text)" }}
+                          >
                             {new Date(v.lastOpened).toLocaleDateString()}
                           </span>
                         </button>
@@ -2255,58 +2566,138 @@ function WelcomeModal({ onDismiss, onSignIn, user, onOpenVault, onCreateVault, r
                     </div>
                   </div>
                 )}
+              </section>
+            )}
+
+            {/* Account section */}
+            <section aria-labelledby="account-heading">
+              <div className="flex items-center justify-between mb-3">
+                <h2
+                  id="account-heading"
+                  className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                >
+                  {isElectronCtx ? "02 — Cloud sync" : "01 — Cloud sync"}
+                </h2>
+                <span
+                  className="font-mono text-[10px] uppercase tracking-[0.18em]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                >
+                  optional
+                </span>
               </div>
-            )}
 
-            {(onOpenVault || onCreateVault) && (
-              <div className="h-px" style={{ background: "var(--color-obsidian-border)" }} />
-            )}
-
-            {/* ── Account section ── */}
-            <div className="flex flex-col items-center text-center">
               {user ? (
-                <>
+                <div
+                  className="flex items-center gap-3 p-3 rounded-xl"
+                  style={{
+                    background: "var(--color-obsidian-bg)",
+                    border: "1px solid var(--color-obsidian-border)",
+                  }}
+                >
                   <div
-                    className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold mb-2"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-base font-bold shrink-0"
                     style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
                   >
-                    {user.displayName.charAt(0).toUpperCase()}
+                    {initial}
                   </div>
-                  <h2 className="text-sm font-bold" style={{ color: "var(--color-obsidian-text)" }}>{user.displayName}</h2>
-                  <p className="text-xs mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>{user.email}</p>
-                  <div className="flex items-center gap-1.5 mb-4">
-                    <Cloud size={12} style={{ color: "#a6e3a1" }} />
-                    <span className="text-xs font-medium" style={{ color: "#a6e3a1" }}>Signed in &amp; syncing</span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate" style={{ color: "var(--color-obsidian-text)" }}>
+                      {user.displayName || user.email || "Signed in"}
+                    </p>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="h-1.5 w-1.5 rounded-full shrink-0" style={{ background: "#a6e3a1" }} aria-hidden="true" />
+                      <p className="text-[11px] truncate" style={{ color: "#a6e3a1" }}>
+                        Signed in & syncing
+                      </p>
+                    </div>
                   </div>
-                </>
+                </div>
               ) : (
                 <>
-                  <div className="w-10 h-10 rounded-xl flex items-center justify-center mb-3" style={{ background: "var(--color-obsidian-surface-2)" }}>
-                    <Cloud size={20} style={{ color: "var(--color-obsidian-accent)" }} />
-                  </div>
-                  <h2 className="text-sm font-bold mb-1" style={{ color: "var(--color-obsidian-text)" }}>Cloud Sync</h2>
-                  <p className="text-xs leading-relaxed mb-4" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                    Sync across devices in real-time. Encrypted and private.
+                  <p className="text-sm leading-relaxed mb-3" style={{ color: "var(--color-obsidian-text)" }}>
+                    Sync across devices in real-time. End-to-end encrypted, offline-first.
                   </p>
                   <button
                     onClick={onSignIn}
-                    className="w-full px-5 py-2 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90 mb-2"
-                    style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                    className="w-full px-4 py-2.5 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
+                    style={{
+                      background: "var(--color-obsidian-text)",
+                      color: "var(--color-obsidian-bg)",
+                    }}
                   >
-                    Sign In
-                  </button>
-                  <button onClick={onDismiss} className="text-xs transition-opacity hover:opacity-80 mb-2" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                    Continue without account
+                    Sign in to sync
                   </button>
                 </>
               )}
+            </section>
+
+            {/* Features grid */}
+            <section aria-labelledby="features-heading" className="flex-1">
+              <div className="flex items-center justify-between mb-3">
+                <h2
+                  id="features-heading"
+                  className="text-[10px] font-semibold uppercase tracking-[0.22em]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                >
+                  {isElectronCtx ? "03 — Inside" : "02 — Inside"}
+                </h2>
+                <span
+                  className="font-mono text-[10px] uppercase tracking-[0.18em]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                >
+                  6 of {WELCOME_FEATURES.length}+
+                </span>
+              </div>
+              <ul className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                {WELCOME_FEATURES.map((f) => (
+                  <li
+                    key={f.title}
+                    className="flex items-start gap-2.5 p-2.5 rounded-lg"
+                    style={{
+                      background: "var(--color-obsidian-bg)",
+                      border: "1px solid var(--color-obsidian-border)",
+                    }}
+                  >
+                    <div
+                      className="shrink-0 mt-0.5 p-1.5 rounded-md"
+                      style={{ background: "rgba(167,139,250,0.12)" }}
+                      aria-hidden="true"
+                    >
+                      <f.icon size={13} style={{ color: "#a78bfa" }} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold leading-tight" style={{ color: "var(--color-obsidian-text)" }}>
+                        {f.title}
+                      </p>
+                      <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                        {f.desc}
+                      </p>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </section>
+
+            {/* Primary CTA */}
+            <div className="flex flex-col gap-2 mt-auto pt-2">
               <button
                 onClick={onDismiss}
-                className="w-full px-6 py-2 rounded-lg text-sm font-semibold transition-opacity hover:opacity-90"
-                style={{ background: "var(--color-obsidian-surface)", color: "var(--color-obsidian-text)", border: "1px solid var(--color-obsidian-border)" }}
+                className="w-full px-6 py-3 rounded-xl text-sm font-semibold transition-all"
+                style={{
+                  background: "var(--color-obsidian-accent)",
+                  color: "#fff",
+                  boxShadow: "0 8px 24px rgba(59,142,245,0.28)",
+                }}
               >
-                {onOpenVault ? "Continue to Web Version" : "Get Started"}
+                {isElectronCtx ? "Continue without a vault" : "Open Voltex Notes →"}
               </button>
+              <p className="text-center text-[11px]" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                Press <kbd
+                  className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                  style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
+                >Esc</kbd> to dismiss · always available from the title bar
+              </p>
             </div>
           </div>
         </div>
@@ -2318,115 +2709,183 @@ function WelcomeModal({ onDismiss, onSignIn, user, onOpenVault, onCreateVault, r
 // ─── WorkspaceSetupDialog (private sub-component) ─────────────────────────────
 
 function WorkspaceSetupDialog({ onSelect }: { onSelect: (choice: "docs" | "empty") => void }) {
-  const [selected, setSelected] = useState<"docs" | "empty" | null>(null);
+  const [selected, setSelected] = useState<"docs" | "empty">("docs");
+  const titleId = useId();
+  const descId = useId();
+  const continueRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    setTimeout(() => continueRef.current?.focus(), 0);
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Enter" && (e.target as HTMLElement)?.tagName !== "BUTTON") {
+        e.preventDefault();
+        onSelect(selected);
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => {
+      window.removeEventListener("keydown", handleKey);
+      previouslyFocused?.focus?.();
+    };
+  }, [selected, onSelect]);
+
+  const options: Array<{
+    id: "docs" | "empty";
+    label: string;
+    desc: string;
+    icon: React.ElementType;
+    badge?: string;
+  }> = [
+    {
+      id: "docs",
+      label: "Start with Documentation",
+      desc: "Pre-loaded guides, markdown reference, wikilinks tutorial. Best if you're new to vault-style notes.",
+      icon: BookOpen,
+      badge: "Recommended",
+    },
+    {
+      id: "empty",
+      label: "Start Empty",
+      desc: "Clean slate with a single root folder. Best if you're importing your own notes.",
+      icon: FolderOpen,
+    },
+  ];
 
   return (
     <div
-      className="fixed inset-0 z-[200] flex items-center justify-center"
-      style={{ background: "rgba(0,0,0,0.6)" }}
+      className="fixed inset-0 z-[200] flex items-center justify-center p-3 sm:p-6"
+      style={{ background: "rgba(6,7,12,0.7)", backdropFilter: "blur(8px)", animation: "fadeIn 0.18s ease" }}
     >
       <div
-        className="w-full max-w-xl mx-4 rounded-2xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        aria-describedby={descId}
+        className="w-full max-w-2xl rounded-[20px] overflow-hidden"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
-          animation: "scaleIn 0.3s ease",
-          maxHeight: "calc(100dvh - 32px)",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+          animation: "scaleIn 0.22s cubic-bezier(.2,.8,.2,1)",
+          maxHeight: "calc(100dvh - 24px)",
           overflowY: "auto",
         }}
       >
         <div className="p-6 sm:p-8">
-          <h2 className="text-2xl font-bold text-center mb-2" style={{ color: "var(--color-obsidian-text)" }}>
-            Set Up Your Workspace
-          </h2>
-          <p className="text-sm text-center mb-6" style={{ color: "var(--color-obsidian-muted-text)" }}>
-            Choose how you want to start your vault
-          </p>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-6">
-            {/* Option A: Documentation */}
-            <button
-              onClick={() => setSelected("docs")}
-              className="text-left p-5 rounded-xl transition-all"
-              style={{
-                background: "var(--color-obsidian-bg)",
-                border: selected === "docs"
-                  ? "2px solid var(--color-obsidian-accent)"
-                  : "2px solid var(--color-obsidian-border)",
-                boxShadow: selected === "docs"
-                  ? "0 0 20px rgba(59,142,245,0.15)"
-                  : "none",
-              }}
+          <div className="flex items-center gap-2 mb-4">
+            <span
+              className="font-mono text-[10px] uppercase tracking-[0.28em]"
+              style={{ color: "var(--color-obsidian-muted-text)" }}
             >
-              <div className="flex items-center gap-2 mb-3">
-                <BookOpen size={22} style={{ color: "var(--color-obsidian-accent)" }} />
-                <span
-                  className="text-xs font-semibold px-2 py-0.5 rounded-full"
-                  style={{
-                    background: "rgba(59,142,245,0.15)",
-                    color: "var(--color-obsidian-accent)",
-                  }}
-                >
-                  Recommended
-                </span>
-              </div>
-              <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
-                Start with Documentation
-              </p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                Pre-load your workspace with guides, templates, and examples. Includes Getting Started, Markdown reference, and Wikilinks tutorial.
-              </p>
-              {selected === "docs" && (
-                <div className="mt-3 flex items-center gap-1" style={{ color: "var(--color-obsidian-accent)" }}>
-                  <Check size={16} />
-                  <span className="text-xs font-semibold">Selected</span>
-                </div>
-              )}
-            </button>
-
-            {/* Option B: Empty workspace */}
-            <button
-              onClick={() => setSelected("empty")}
-              className="text-left p-5 rounded-xl transition-all"
-              style={{
-                background: "var(--color-obsidian-bg)",
-                border: selected === "empty"
-                  ? "2px solid var(--color-obsidian-accent)"
-                  : "2px solid var(--color-obsidian-border)",
-                boxShadow: selected === "empty"
-                  ? "0 0 20px rgba(59,142,245,0.15)"
-                  : "none",
-              }}
-            >
-              <FolderOpen size={22} style={{ color: "var(--color-obsidian-accent)" }} className="mb-3" />
-              <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
-                Start with Empty Workspace
-              </p>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
-                Begin with a clean slate. Just an empty vault with a root folder — perfect if you know what you&#39;re doing or want to import your own notes.
-              </p>
-              {selected === "empty" && (
-                <div className="mt-3 flex items-center gap-1" style={{ color: "var(--color-obsidian-accent)" }}>
-                  <Check size={16} />
-                  <span className="text-xs font-semibold">Selected</span>
-                </div>
-              )}
-            </button>
+              step 02 — workspace
+            </span>
+            <span className="h-px flex-1" style={{ background: "var(--color-obsidian-border)" }} />
           </div>
 
-          <div className="text-center">
+          <h2
+            id={titleId}
+            className="text-3xl sm:text-4xl tracking-tight leading-[1.05]"
+            style={{
+              fontFamily: "var(--font-fraunces), Georgia, serif",
+              color: "var(--color-obsidian-text)",
+              fontWeight: 400,
+            }}
+          >
+            How should we
+            <br />
+            <em style={{ fontStyle: "italic", color: "var(--color-obsidian-accent)", fontWeight: 500 }}>
+              start your vault?
+            </em>
+          </h2>
+          <p
+            id={descId}
+            className="text-sm mt-3 mb-7"
+            style={{ color: "var(--color-obsidian-muted-text)" }}
+          >
+            You can switch, import, or wipe this anytime from settings.
+          </p>
+
+          <div role="radiogroup" aria-labelledby={titleId} className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-7">
+            {options.map(({ id, label, desc, icon: Icon, badge }) => {
+              const isActive = selected === id;
+              return (
+                <button
+                  key={id}
+                  role="radio"
+                  aria-checked={isActive}
+                  onClick={() => setSelected(id)}
+                  className="text-left p-5 rounded-xl transition-all relative outline-none focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent"
+                  style={{
+                    background: isActive ? "var(--color-obsidian-bg)" : "var(--color-obsidian-bg)",
+                    border: isActive
+                      ? "1.5px solid var(--color-obsidian-accent)"
+                      : "1.5px solid var(--color-obsidian-border)",
+                    boxShadow: isActive
+                      ? "0 0 0 4px rgba(59,142,245,0.12), 0 8px 24px rgba(59,142,245,0.18)"
+                      : "none",
+                  }}
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div
+                      className="w-10 h-10 rounded-lg flex items-center justify-center"
+                      style={{
+                        background: isActive ? "var(--color-obsidian-accent)" : "var(--color-obsidian-surface-2)",
+                      }}
+                      aria-hidden="true"
+                    >
+                      <Icon size={18} style={{ color: isActive ? "#fff" : "var(--color-obsidian-accent)" }} />
+                    </div>
+                    {badge && (
+                      <span
+                        className="text-[10px] font-semibold uppercase tracking-wider px-2 py-1 rounded-full"
+                        style={{
+                          background: "rgba(59,142,245,0.14)",
+                          color: "var(--color-obsidian-accent)",
+                        }}
+                      >
+                        {badge}
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-sm font-semibold mb-1" style={{ color: "var(--color-obsidian-text)" }}>
+                    {label}
+                  </p>
+                  <p className="text-xs leading-relaxed" style={{ color: "var(--color-obsidian-muted-text)" }}>
+                    {desc}
+                  </p>
+                  {isActive && (
+                    <div
+                      className="absolute top-3 right-3 w-5 h-5 rounded-full flex items-center justify-center"
+                      style={{ background: "var(--color-obsidian-accent)" }}
+                      aria-hidden="true"
+                    >
+                      <Check size={12} color="#fff" strokeWidth={3} />
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-[11px]" style={{ color: "var(--color-obsidian-muted-text)" }}>
+              Press <kbd
+                className="px-1.5 py-0.5 rounded text-[10px] font-mono"
+                style={{ background: "var(--color-obsidian-bg)", border: "1px solid var(--color-obsidian-border)", color: "var(--color-obsidian-text)" }}
+              >Enter</kbd> to confirm
+            </p>
             <button
-              onClick={() => selected && onSelect(selected)}
-              disabled={!selected}
-              className="px-8 py-3 rounded-xl text-base font-semibold transition-opacity"
+              ref={continueRef}
+              onClick={() => onSelect(selected)}
+              className="px-7 py-2.5 rounded-xl text-sm font-semibold transition-all"
               style={{
-                background: selected ? "var(--color-obsidian-accent)" : "var(--color-obsidian-surface-2)",
-                color: selected ? "#fff" : "var(--color-obsidian-muted-text)",
-                cursor: selected ? "pointer" : "not-allowed",
-                opacity: selected ? 1 : 0.6,
+                background: "var(--color-obsidian-accent)",
+                color: "#fff",
+                boxShadow: "0 8px 20px rgba(59,142,245,0.25)",
               }}
             >
-              Continue
+              Continue →
             </button>
           </div>
         </div>
@@ -2439,22 +2898,39 @@ function WorkspaceSetupDialog({ onSelect }: { onSelect: (choice: "docs" | "empty
 
 function VaultNameDialog({ onSubmit, onCancel }: { onSubmit: (name: string) => void; onCancel: () => void }) {
   const [name, setName] = useState("");
+  const titleId = useId();
+
+  useEffect(() => {
+    const handleKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onCancel();
+      }
+    };
+    window.addEventListener("keydown", handleKey);
+    return () => window.removeEventListener("keydown", handleKey);
+  }, [onCancel]);
+
   return (
     <div
-      className="fixed inset-0 z-[250] flex items-center justify-center"
-      style={{ backdropFilter: "blur(6px)", background: "rgba(0,0,0,0.5)" }}
+      className="fixed inset-0 z-[250] flex items-center justify-center p-4"
+      style={{ backdropFilter: "blur(6px)", background: "rgba(0,0,0,0.5)", animation: "fadeIn 0.15s ease" }}
       onClick={onCancel}
     >
       <div
-        className="w-full max-w-sm mx-4 p-6 rounded-xl"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        className="w-full max-w-sm p-6 rounded-2xl"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
-          animation: "scaleIn 0.2s ease",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.55)",
+          animation: "scaleIn 0.18s ease",
         }}
         onClick={(e) => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold mb-3" style={{ color: "var(--color-obsidian-text)" }}>
+        <h3 id={titleId} className="text-sm font-semibold mb-3" style={{ color: "var(--color-obsidian-text)" }}>
           Vault Name
         </h3>
         <input
@@ -2511,13 +2987,33 @@ interface UserInfoPanelProps {
 }
 
 function UserInfoPanel({ user, notesCount, syncStatus, onClose, onSignIn, onOpenSettings }: UserInfoPanelProps) {
+  const titleId = useId();
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    panelRef.current?.focus();
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
   return (
     <div
       className="user-info-backdrop fixed inset-0 z-[200] flex items-start justify-end pt-12 pr-3"
       onClick={onClose}
     >
       <div
-        className="user-info-panel w-80 rounded-xl overflow-hidden"
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby={titleId}
+        tabIndex={-1}
+        className="user-info-panel w-80 rounded-xl overflow-hidden outline-none"
         style={{
           background: "var(--color-obsidian-surface)",
           border: "1px solid var(--color-obsidian-border)",
@@ -2526,6 +3022,7 @@ function UserInfoPanel({ user, notesCount, syncStatus, onClose, onSignIn, onOpen
         }}
         onClick={(e) => e.stopPropagation()}
       >
+        <h2 id={titleId} className="sr-only">Account menu</h2>
         {/* Header */}
         <div
           className="px-5 pt-5 pb-4"
@@ -2536,12 +3033,13 @@ function UserInfoPanel({ user, notesCount, syncStatus, onClose, onSignIn, onOpen
               <div
                 className="w-11 h-11 rounded-full flex items-center justify-center text-lg font-bold shrink-0"
                 style={{ background: "var(--color-obsidian-accent)", color: "#fff" }}
+                aria-hidden="true"
               >
-                {user.displayName.charAt(0).toUpperCase()}
+                {(user.displayName?.trim()?.charAt(0) || user.email?.trim()?.charAt(0) || "?").toUpperCase()}
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate" style={{ color: "var(--color-obsidian-text)" }}>
-                  {user.displayName}
+                  {user.displayName || user.email || "Signed in"}
                 </p>
                 <p className="text-xs truncate" style={{ color: "var(--color-obsidian-muted-text)" }}>
                   {user.email}
