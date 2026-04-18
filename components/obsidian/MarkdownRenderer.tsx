@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import DOMPurify from "dompurify";
+import hljs from "highlight.js/lib/common";
 import {
   Info, AlertTriangle, CheckCircle, XCircle, Lightbulb,
   Quote, Flame, Bug, HelpCircle, List, Bookmark, Pencil,
-  FileText, Zap, Target, Heart
+  FileText, Zap, Target, Heart, Copy, Check
 } from "lucide-react";
 
 interface MarkdownRendererProps {
@@ -295,12 +296,126 @@ function CalloutBlock({
   );
 }
 
+// ─── Code Block (highlight.js) ────────────────────────────────────────────────
+// Token color rules live in app/globals.css (.hljs-*) so they're available on
+// first paint and survive hydration without a JS-injected <style> tag.
+
+function CodeBlock({ code, lang }: { code: string; lang?: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const { html, detectedLang } = useMemo(() => {
+    try {
+      // Explicit language → highlight; otherwise auto-detect.
+      if (lang && hljs.getLanguage(lang)) {
+        const r = hljs.highlight(code, { language: lang, ignoreIllegals: true });
+        return { html: r.value, detectedLang: lang };
+      }
+      // Skip auto-detect for trivial/empty content.
+      if (code.trim().length < 2) {
+        return { html: escapeHtml(code), detectedLang: lang ?? "" };
+      }
+      const r = hljs.highlightAuto(code);
+      return { html: r.value, detectedLang: lang ?? r.language ?? "" };
+    } catch {
+      return { html: escapeHtml(code), detectedLang: lang ?? "" };
+    }
+  }, [code, lang]);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch { /* ignore */ }
+  };
+
+  return (
+    <div
+      className="group/codeblock"
+      style={{
+        background: "var(--color-obsidian-code-bg)",
+        border: "1px solid var(--color-obsidian-border)",
+        borderRadius: 10,
+        margin: "14px 0",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      {/* Header bar — language label + copy button */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "6px 10px 6px 14px",
+          background: "color-mix(in srgb, var(--color-obsidian-text) 3%, transparent)",
+          borderBottom: "1px solid color-mix(in srgb, var(--color-obsidian-border) 70%, transparent)",
+          fontFamily: "var(--font-mono, ui-monospace)",
+          fontSize: 11,
+          color: "var(--color-obsidian-muted-text)",
+          letterSpacing: "0.04em",
+          textTransform: "uppercase",
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 8 }}>
+          <span
+            style={{
+              width: 6,
+              height: 6,
+              borderRadius: "50%",
+              background: detectedLang ? "#a6e3a1" : "#6c7086",
+              boxShadow: detectedLang ? "0 0 6px rgba(166,227,161,0.6)" : "none",
+            }}
+          />
+          {detectedLang || "plain"}
+        </span>
+        <button
+          onClick={handleCopy}
+          aria-label="Copy code"
+          title={copied ? "Copied!" : "Copy"}
+          className="opacity-60 hover:opacity-100 transition-opacity"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "3px 7px",
+            borderRadius: 5,
+            background: "transparent",
+            color: copied ? "#a6e3a1" : "var(--color-obsidian-muted-text)",
+            fontSize: 10.5,
+            fontFamily: "inherit",
+            letterSpacing: "0.04em",
+            textTransform: "uppercase",
+            cursor: "pointer",
+          }}
+        >
+          {copied ? <Check size={11} /> : <Copy size={11} />}
+          {copied ? "Copied" : "Copy"}
+        </button>
+      </div>
+      <pre
+        style={{
+          margin: 0,
+          padding: "12px 16px",
+          overflowX: "auto",
+          fontFamily: "var(--font-mono, ui-monospace)",
+          fontSize: "0.87em",
+          color: "var(--color-obsidian-code-text)",
+          lineHeight: 1.6,
+        }}
+      >
+        <code
+          className={`hljs ${detectedLang ? `language-${detectedLang}` : ""}`}
+          dangerouslySetInnerHTML={{ __html: html }}
+        />
+      </pre>
+    </div>
+  );
+}
+
 // ─── Mermaid Diagram Renderer ──────────────────────────────────────────────────
 
 function MermaidDiagram({ code }: { code: string }) {
-  const [svg, setSvg] = useState<string>("");
-  const [error, setError] = useState<string>("");
-  const containerId = useRef(`mermaid-${Math.random().toString(36).substr(2, 9)}`);
 
   useEffect(() => {
     const renderMermaid = async () => {
@@ -501,10 +616,10 @@ function BlockReference({
 // ─── Foldable Heading ─────────────────────────────────────────────────────────
 
 const HEADING_SIZES: Record<number, string> = {
-  1: "1.8em", 2: "1.45em", 3: "1.2em", 4: "1.05em", 5: "0.95em", 6: "0.9em",
+  1: "1.4em", 2: "1.22em", 3: "1.1em", 4: "1em", 5: "0.92em", 6: "0.88em",
 };
 const HEADING_MARGINS: Record<number, string> = {
-  1: "28px 0 12px", 2: "24px 0 10px", 3: "20px 0 8px", 4: "16px 0 6px", 5: "14px 0 4px", 6: "12px 0 4px",
+  1: "22px 0 8px", 2: "20px 0 8px", 3: "18px 0 6px", 4: "16px 0 6px", 5: "14px 0 4px", 6: "12px 0 4px",
 };
 
 function FoldableHeading({
@@ -566,12 +681,13 @@ function FoldableHeading({
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
             style: {
               fontSize: HEADING_SIZES[level],
-              fontWeight: level <= 2 ? 700 : 600,
+              fontWeight: level === 1 ? 650 : level === 2 ? 600 : 600,
               color: "var(--color-foreground)",
               margin: HEADING_MARGINS[level],
               lineHeight: 1.3,
-              borderBottom: level === 1 ? "1px solid var(--color-obsidian-border)" : "none",
-              paddingBottom: level === 1 ? "8px" : "0",
+              letterSpacing: level <= 2 ? "-0.01em" : "0",
+              borderBottom: "none",
+              paddingBottom: "0",
               flex: 1,
             },
           },
@@ -975,44 +1091,7 @@ export default function MarkdownRenderer({
         i++;
       }
       elements.push(
-        <div
-          key={key++}
-          style={{
-            background: "var(--color-obsidian-code-bg)",
-            border: "1px solid var(--color-obsidian-border)",
-            borderRadius: "6px",
-            margin: "12px 0",
-            overflow: "hidden",
-          }}
-        >
-          {lang && (
-            <div
-              style={{
-                background: "var(--color-obsidian-surface)",
-                padding: "4px 12px",
-                fontSize: "0.75em",
-                color: "var(--color-obsidian-muted-text)",
-                borderBottom: "1px solid var(--color-obsidian-border)",
-                fontFamily: "var(--font-mono)",
-              }}
-            >
-              {lang}
-            </div>
-          )}
-          <pre
-            style={{
-              margin: 0,
-              padding: "12px 16px",
-              overflowX: "auto",
-              fontFamily: "var(--font-mono)",
-              fontSize: "0.87em",
-              color: "var(--color-obsidian-code-text)",
-              lineHeight: 1.6,
-            }}
-          >
-            <code>{codeLines.join("\n")}</code>
-          </pre>
-        </div>
+        <CodeBlock key={key++} code={codeLines.join("\n")} lang={lang || undefined} />
       );
       i++;
       continue;
@@ -1106,12 +1185,13 @@ export default function MarkdownRenderer({
             id: text.toLowerCase().replace(/\s+/g, "-").replace(/[^\w-]/g, ""),
             style: {
               fontSize: HEADING_SIZES[level],
-              fontWeight: level <= 2 ? 700 : 600,
+              fontWeight: level === 1 ? 650 : 600,
               color: "var(--color-foreground)",
               margin: HEADING_MARGINS[level],
               lineHeight: 1.3,
-              borderBottom: level === 1 ? "1px solid var(--color-obsidian-border)" : "none",
-              paddingBottom: level === 1 ? "8px" : "0",
+              letterSpacing: level <= 2 ? "-0.01em" : "0",
+              borderBottom: "none",
+              paddingBottom: "0",
             },
           },
           parseInline(text, onWikilinkClick, onHoverLink, onHoverEnd, notes)

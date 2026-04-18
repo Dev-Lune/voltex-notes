@@ -87,10 +87,18 @@ function NoteTypeBadge({ type }: { type?: NoteType }) {
   const { label, color, icon: Icon } = map[t];
   return (
     <div
-      className="flex items-center gap-1 px-2 py-0.5 rounded-full text-xs"
-      style={{ background: `${color}18`, color, border: `1px solid ${color}30` }}
+      className="hidden md:flex items-center gap-1.5 px-2 py-1 rounded-md"
+      style={{
+        background: `color-mix(in srgb, ${color} 10%, transparent)`,
+        color,
+        border: `1px solid color-mix(in srgb, ${color} 25%, transparent)`,
+        fontSize: 10.5,
+        fontWeight: 500,
+        letterSpacing: "0.02em",
+        textTransform: "uppercase",
+      }}
     >
-      <Icon size={10} />
+      <Icon size={10} strokeWidth={2.25} />
       {label}
     </div>
   );
@@ -730,16 +738,24 @@ function TabBar({
     <div
       role="tablist"
       aria-label="Open notes"
-      className="flex items-center overflow-x-auto shrink-0 scrollbar-thin"
+      className="editor-tab-strip flex items-end overflow-x-auto shrink-0 px-2 pt-1.5 gap-0.5"
       style={{
-        borderBottom: "1px solid var(--color-obsidian-border)",
-        background: "var(--color-obsidian-bg)",
-        height: 36,
+        background: "transparent",
+        height: 38,
       }}
     >
       {openNoteIds.map((id) => {
         const note = notes.find((n) => n.id === id);
         const isActive = id === activeNoteId;
+        const accentByType: Record<string, string> = {
+          drawing: "#cba6f7",
+          daily: "#f9e2af",
+          kanban: "#89b4fa",
+          table: "#a6e3a1",
+          canvas: "#74c7ec",
+          markdown: "var(--color-obsidian-accent)",
+        };
+        const dotColor = accentByType[note?.type ?? "markdown"];
         return (
           <div
             key={id}
@@ -747,16 +763,31 @@ function TabBar({
             role="tab"
             tabIndex={isActive ? 0 : -1}
             aria-selected={isActive}
-            className="group flex items-center gap-1.5 px-3 cursor-pointer shrink-0 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+            className="group relative flex items-center gap-2 px-3 cursor-pointer shrink-0 transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
             style={{
-              height: 36,
-              borderRight: "1px solid var(--color-obsidian-border)",
-              background: isActive ? "var(--color-obsidian-surface)" : "transparent",
-              boxShadow: isActive ? "inset 0 -2px 0 0 var(--color-obsidian-accent)" : "inset 0 -2px 0 0 transparent",
+              height: 30,
+              borderRadius: "8px 8px 2px 2px",
+              background: isActive
+                ? "var(--color-obsidian-bg)"
+                : "transparent",
+              border: isActive
+                ? "1px solid var(--color-obsidian-border)"
+                : "1px solid transparent",
+              borderBottom: isActive ? "1px solid var(--color-obsidian-bg)" : "1px solid transparent",
+              marginBottom: isActive ? -1 : 0,
               color: isActive ? "var(--color-obsidian-text)" : "var(--color-obsidian-muted-text)",
               fontWeight: isActive ? 500 : 400,
               maxWidth: 200,
               minWidth: 110,
+              boxShadow: isActive
+                ? "0 -2px 8px -4px rgba(0,0,0,0.4)"
+                : "none",
+            }}
+            onMouseEnter={(e) => {
+              if (!isActive) e.currentTarget.style.background = "color-mix(in srgb, var(--color-obsidian-text) 4%, transparent)";
+            }}
+            onMouseLeave={(e) => {
+              if (!isActive) e.currentTarget.style.background = "transparent";
             }}
             onClick={() => onActivate(id)}
             onKeyDown={(e) => {
@@ -776,17 +807,31 @@ function TabBar({
               }
             }}
           >
-            {note?.type === "drawing" && <Pencil size={11} style={{ color: "#cba6f7", flexShrink: 0 }} />}
-            {note?.type === "daily" && <CalendarDays size={11} style={{ color: "#f9e2af", flexShrink: 0 }} />}
-            {note?.type === "kanban" && <LayoutGrid size={11} style={{ color: "#89b4fa", flexShrink: 0 }} />}
-            {note?.type === "table" && <Table2 size={11} style={{ color: "#a6e3a1", flexShrink: 0 }} />}
-            {note?.type === "canvas" && <Layers size={11} style={{ color: "#74c7ec", flexShrink: 0 }} />}
-            <span className="truncate flex-1" style={{ fontSize: 12 }}>{note?.title ?? "Untitled"}</span>
+            {/* Type indicator dot */}
+            <span
+              className="shrink-0 rounded-full"
+              style={{
+                width: 6,
+                height: 6,
+                background: isActive ? dotColor : `color-mix(in srgb, ${dotColor} 60%, transparent)`,
+                boxShadow: isActive ? `0 0 6px ${dotColor}` : "none",
+                transition: "all 0.15s",
+              }}
+            />
+            <span className="truncate flex-1" style={{ fontSize: 12, letterSpacing: "-0.01em" }}>{note?.title ?? "Untitled"}</span>
             {dirtyNoteIds?.has(id) && (
-              <span style={{ color: "var(--color-obsidian-accent)", lineHeight: 1, fontSize: 14 }}>•</span>
+              <span
+                className="shrink-0 rounded-full"
+                style={{
+                  width: 5,
+                  height: 5,
+                  background: "var(--color-obsidian-accent)",
+                }}
+                title="Unsaved changes"
+              />
             )}
             <button
-              className={`${isActive ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'} hover:text-white hover:bg-white/10 transition-all rounded p-0.5 -mr-1`}
+              className={`${isActive ? 'opacity-70' : 'opacity-0 group-hover:opacity-70'} hover:opacity-100 hover:bg-white/10 transition-all rounded p-0.5 -mr-1`}
               onClick={(e) => { e.stopPropagation(); onClose(id); }}
               aria-label="Close tab"
             >
@@ -1270,7 +1315,18 @@ function Toolbar({
   const iconSize = isMobile ? 16 : 13;
   const btnClass = isMobile
     ? "p-2 rounded-md hover:bg-white/10 active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
-    : "p-1.5 rounded-md hover:bg-white/[0.07] active:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]";
+    : "p-1.5 rounded-md hover:bg-white/[0.06] active:bg-white/10 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]";
+
+  // Pill cluster wrapper — groups related icon buttons with a subtle inset background
+  const clusterStyle: React.CSSProperties = {
+    background: "color-mix(in srgb, var(--color-obsidian-text) 3.5%, transparent)",
+    border: "1px solid color-mix(in srgb, var(--color-obsidian-border) 60%, transparent)",
+    borderRadius: 8,
+    padding: 2,
+    display: "flex",
+    alignItems: "center",
+    gap: 1,
+  };
 
   const formattingInline = [
     { icon: Bold, title: "Bold", insert: "**bold**" },
@@ -1295,15 +1351,28 @@ function Toolbar({
 
   return (
     <>
-    <div className="shrink-0" style={{ borderBottom: "1px solid var(--color-obsidian-border)", background: "var(--color-obsidian-bg)" }}>
+    <div
+      className="shrink-0"
+      style={{
+        borderBottom: "1px solid var(--color-obsidian-border)",
+        background: "var(--color-obsidian-bg)",
+      }}
+    >
       {/* Row 1: View mode, note type, actions */}
-      <div className="editor-toolbar-row flex items-center gap-1 px-3 overflow-x-auto" style={{ scrollbarWidth: "none", height: 40 }}>
+      <div className="editor-toolbar-row flex items-center gap-2 px-3 overflow-x-auto" style={{ scrollbarWidth: "none", height: 44 }}>
         {/* View mode — only for non-drawing notes */}
         {!isDrawing && (
           <>
             <div
-              className="flex items-center rounded-md overflow-hidden"
-              style={{ border: "1px solid var(--color-obsidian-border)" }}
+              role="tablist"
+              aria-label="View mode"
+              className="flex items-center"
+              style={{
+                padding: 2,
+                borderRadius: 8,
+                background: "color-mix(in srgb, var(--color-obsidian-text) 4%, transparent)",
+                border: "1px solid color-mix(in srgb, var(--color-obsidian-border) 60%, transparent)",
+              }}
             >
               {(
                 isMobile
@@ -1317,20 +1386,33 @@ function Toolbar({
                       { mode: "editor" as const, icon: Edit3, title: "Source mode (Ctrl+E)" },
                       { mode: "preview" as const, icon: BookOpen, title: "Reading mode (Ctrl+E)" },
                     ]
-              ).map(({ mode, icon: Icon, title }) => (
-                <button
-                  key={mode}
-                  onClick={() => onViewMode(mode)}
-                  title={title}
-                  className={isMobile ? "px-3 py-1.5 transition-colors" : "px-2 py-1 transition-colors"}
-                  style={{
-                    background: viewMode === mode ? "var(--color-obsidian-accent)" : "transparent",
-                    color: viewMode === mode ? "#fff" : "var(--color-obsidian-muted-text)",
-                  }}
-                >
-                  <Icon size={iconSize} />
-                </button>
-              ))}
+              ).map(({ mode, icon: Icon, title }) => {
+                const active = viewMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    role="tab"
+                    aria-selected={active}
+                    onClick={() => onViewMode(mode)}
+                    title={title}
+                    className={`transition-all focus-visible:outline-none ${isMobile ? "px-3 py-1.5" : "px-2.5 py-1"}`}
+                    style={{
+                      borderRadius: 6,
+                      background: active
+                        ? "var(--color-obsidian-surface)"
+                        : "transparent",
+                      color: active
+                        ? "var(--color-obsidian-text)"
+                        : "var(--color-obsidian-muted-text)",
+                      boxShadow: active
+                        ? "0 1px 2px rgba(0,0,0,0.25), 0 0 0 1px color-mix(in srgb, var(--color-obsidian-border) 80%, transparent)"
+                        : "none",
+                    }}
+                  >
+                    <Icon size={iconSize} />
+                  </button>
+                );
+              })}
             </div>
             {plugins.includes("sliding-panes") && !isMobile && (
               <button onClick={onToggleSlidingPanes} title="Sliding Panes"
@@ -1339,50 +1421,51 @@ function Toolbar({
                 <FlipHorizontal size={iconSize} />
               </button>
             )}
-            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
           </>
         )}
 
         {/* Note type badge */}
         {note && <NoteTypeBadge type={note.type} />}
 
-        {/* Formatting buttons — desktop only, inline in row 1 */}
+        {/* Formatting buttons — desktop only, inline in row 1, grouped in pill clusters */}
         {!isMobile && showFormatting && (
           <>
-            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-            {formattingInline.map(({ icon: Icon, title, insert }) => (
-              <button
-                key={title}
-                title={title}
-                className={btnClass}
-                style={{ color: "var(--color-obsidian-muted-text)" }}
-                onClick={() => onInsertText?.(insert)}
-              >
-                <Icon size={iconSize} />
-              </button>
-            ))}
-            <div className="h-4 w-px" style={{ background: "var(--color-obsidian-border)" }} />
-            {formattingBlock.map(({ icon: Icon, title, insert }) => (
-              <button
-                key={title}
-                title={title}
-                className={btnClass}
-                style={{ color: "var(--color-obsidian-muted-text)" }}
-                onClick={() => insert === "__table__" ? setTableDialogOpen(true) : onInsertText?.(insert)}
-              >
-                <Icon size={iconSize} />
-              </button>
-            ))}
+            <div style={clusterStyle}>
+              {formattingInline.map(({ icon: Icon, title, insert }) => (
+                <button
+                  key={title}
+                  title={title}
+                  className="p-1.5 rounded-md hover:bg-white/[0.08] active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                  onClick={() => onInsertText?.(insert)}
+                >
+                  <Icon size={iconSize} />
+                </button>
+              ))}
+            </div>
+            <div style={clusterStyle}>
+              {formattingBlock.map(({ icon: Icon, title, insert }) => (
+                <button
+                  key={title}
+                  title={title}
+                  className="p-1.5 rounded-md hover:bg-white/[0.08] active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"
+                  style={{ color: "var(--color-obsidian-muted-text)" }}
+                  onClick={() => insert === "__table__" ? setTableDialogOpen(true) : onInsertText?.(insert)}
+                >
+                  <Icon size={iconSize} />
+                </button>
+              ))}
+            </div>
           </>
         )}
 
         <div className="flex-1" />
 
         {note && (
-          <>
+          <div style={!isMobile ? clusterStyle : undefined} className={isMobile ? "flex items-center gap-1" : undefined}>
             <button
               onClick={() => onNoteChange(note.id, { starred: !note.starred })}
-              className={btnClass}
+              className={isMobile ? btnClass : "p-1.5 rounded-md hover:bg-white/[0.08] active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"}
               style={{ color: note.starred ? "#f9e2af" : "var(--color-obsidian-muted-text)" }}
               title={note.starred ? "Remove bookmark" : "Bookmark"}
             >
@@ -1390,7 +1473,7 @@ function Toolbar({
             </button>
             {isLoggedIn && (
               <button
-                className={btnClass}
+                className={isMobile ? btnClass : "p-1.5 rounded-md hover:bg-white/[0.08] active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"}
                 style={{ color: shareStatus === "copied" ? "#a6e3a1" : shareStatus === "sharing" ? "var(--color-obsidian-accent)" : "var(--color-obsidian-muted-text)" }}
                 title={shareStatus === "copied" ? "Link copied!" : shareStatus === "sharing" ? "Sharing…" : "Share note"}
                 onClick={() => note && shareStatus !== "sharing" && onShareNote?.(note.id)}
@@ -1403,7 +1486,7 @@ function Toolbar({
               <button
                 ref={moreButtonRef}
                 onClick={() => setMoreMenuOpen((v) => !v)}
-                className={btnClass}
+                className={isMobile ? btnClass : "p-1.5 rounded-md hover:bg-white/[0.08] active:bg-white/15 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-obsidian-accent)]"}
                 style={{ color: moreMenuOpen ? "var(--color-obsidian-accent-soft)" : "var(--color-obsidian-muted-text)" }}
                 title="More options"
               >
@@ -1656,7 +1739,7 @@ function Toolbar({
                 </>
               )}
             </div>
-          </>
+          </div>
         )}
       </div>
 
@@ -2486,13 +2569,13 @@ const livePreviewTheme = EditorView.theme({
   "&.cm-focused .cm-activeLine": { backgroundColor: "rgba(124,106,247,0.04)" },
   ".cm-gutters": { display: "none" },
   ".cm-scroller": { overflow: "visible !important", fontFamily: "inherit" },
-  // Decorated heading sizes
-  ".cm-heading-1": { fontSize: "2em", fontWeight: "700", lineHeight: "1.3" },
-  ".cm-heading-2": { fontSize: "1.6em", fontWeight: "600", lineHeight: "1.35" },
-  ".cm-heading-3": { fontSize: "1.37em", fontWeight: "600", lineHeight: "1.4" },
-  ".cm-heading-4": { fontSize: "1.1em", fontWeight: "600", lineHeight: "1.4" },
-  ".cm-heading-5": { fontSize: "1em", fontWeight: "600", lineHeight: "1.4" },
-  ".cm-heading-6": { fontSize: "0.85em", fontWeight: "600", lineHeight: "1.4" },
+  // Decorated heading sizes (kept compact — title above already provides large display)
+  ".cm-heading-1": { fontSize: "1.4em", fontWeight: "650", lineHeight: "1.3", letterSpacing: "-0.01em" },
+  ".cm-heading-2": { fontSize: "1.22em", fontWeight: "600", lineHeight: "1.35", letterSpacing: "-0.005em" },
+  ".cm-heading-3": { fontSize: "1.1em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-4": { fontSize: "1em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-5": { fontSize: "0.95em", fontWeight: "600", lineHeight: "1.4" },
+  ".cm-heading-6": { fontSize: "0.9em", fontWeight: "600", lineHeight: "1.4" },
   // Inline decoration classes
   ".cm-lp-strong": { fontWeight: "700" },
   ".cm-lp-em": { fontStyle: "italic" },
@@ -2535,6 +2618,24 @@ const obsidianHighlightStyle = syntaxHighlighting(HighlightStyle.define([
   { tag: tags.quote, color: "var(--color-obsidian-muted-text)" },
   { tag: tags.processingInstruction, color: "var(--color-obsidian-muted-text)" },
   { tag: tags.contentSeparator, color: "var(--color-obsidian-muted-text)" },
+
+  // ── Code-language tokens (Python, JS, etc. inside fenced blocks) ──────
+  // These match the highlight.js palette used in the preview pane so the
+  // editor and reading view feel consistent.
+  { tag: [tags.keyword, tags.modifier, tags.self, tags.null], color: "#cba6f7" },
+  { tag: [tags.controlKeyword, tags.operatorKeyword], color: "#cba6f7" },
+  { tag: [tags.string, tags.special(tags.string), tags.regexp], color: "#a6e3a1" },
+  { tag: [tags.number, tags.bool, tags.atom], color: "#fab387" },
+  { tag: tags.comment, color: "#6c7086", fontStyle: "italic" },
+  { tag: [tags.function(tags.variableName), tags.function(tags.propertyName)], color: "#89b4fa" },
+  { tag: [tags.className, tags.typeName, tags.namespace], color: "#f9e2af" },
+  { tag: [tags.propertyName, tags.attributeName], color: "#89b4fa" },
+  { tag: [tags.variableName, tags.labelName], color: "var(--color-obsidian-text)" },
+  { tag: tags.definition(tags.variableName), color: "#f5c2e7" },
+  { tag: [tags.operator, tags.punctuation, tags.bracket, tags.derefOperator], color: "var(--color-obsidian-muted-text)" },
+  { tag: [tags.tagName, tags.angleBracket], color: "#74c7ec" },
+  { tag: tags.escape, color: "#94e2d5" },
+  { tag: tags.invalid, color: "#f38ba8" },
 ]));
 
 // --- CM6 Live Preview Decoration Builder ---
@@ -2966,11 +3067,17 @@ function LivePreviewPane({
 
   return (
     <div className="flex-1 overflow-y-auto">
-      <div className="editor-content-area mx-auto px-10 pt-10 pb-20 md:pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
+      <div className="editor-content-area mx-auto px-10 pt-12 pb-20 md:pb-32" style={{ maxWidth: readableLength ? "48rem" : "none" }}>
         {/* Title */}
         <input
-          className="editor-title w-full bg-transparent outline-none text-3xl font-bold mb-1"
-          style={{ color: "var(--color-obsidian-text)", lineHeight: 1.3 }}
+          className="editor-title w-full bg-transparent outline-none mb-2"
+          style={{
+            color: "var(--color-obsidian-text)",
+            fontSize: "2.25rem",
+            fontWeight: 700,
+            lineHeight: 1.15,
+            letterSpacing: "-0.025em",
+          }}
           value={note.title}
           onChange={(e) => onTitleChange(e.target.value)}
           placeholder="Untitled"

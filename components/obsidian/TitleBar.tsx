@@ -63,11 +63,8 @@ export default function TitleBar({
 
   return (
     <div
-      className="flex items-center gap-2 px-3 h-11 shrink-0"
-      style={{
-        background: "var(--color-obsidian-bg)",
-        borderBottom: "1px solid var(--color-obsidian-border)",
-      }}
+      className="flex items-center gap-2 px-3 h-10 shrink-0"
+      style={{ background: "transparent" }}
     >
       {/* App logo */}
       <div className="flex items-center gap-2 shrink-0 mr-2">

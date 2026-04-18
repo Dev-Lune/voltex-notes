@@ -76,6 +76,7 @@
     "firebase": "^12.11.0",
     "get-port": "^7.1.0",
     "gray-matter": "^4.0.3",
+    "highlight.js": "^11.11.1",
     "input-otp": "1.4.2",
     "jszip": "^3.10.1",
     "lucide-react": "^0.564.0",

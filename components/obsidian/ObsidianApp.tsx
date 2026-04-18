@@ -338,6 +338,27 @@ export default function ObsidianApp() {
     });
   }, [patch]);
 
+  // Ensure a guest web vault exists so notes/folders auto-save on refresh.
+  // Returns the active vault id (existing or freshly created).
+  const ensureGuestVault = useCallback((): string | undefined => {
+    if (typeof window === "undefined" || isElectron()) return undefined;
+    let vid: string | null = null;
+    try { vid = localStorage.getItem("voltex-active-vault-id"); } catch { /* ignore */ }
+    if (vid) return vid;
+    vid = `vault-${Date.now()}`;
+    const v: Vault = { id: vid, name: "My Notes", createdAt: new Date().toISOString() };
+    try {
+      const existingRaw = localStorage.getItem("voltex-vaults");
+      const existing: Vault[] = existingRaw ? JSON.parse(existingRaw) : [];
+      const list = [...existing, v];
+      localStorage.setItem("voltex-vaults", JSON.stringify(list));
+      localStorage.setItem("voltex-active-vault-id", vid);
+      setWebVaults(list);
+    } catch { /* ignore */ }
+    setActiveWebVaultId(vid);
+    return vid;
+  }, []);
+
   // Open vault + optionally show sync prompt
   const openVaultWithPrompt = useCallback(async (vaultDir: string) => {
     await loadVault(vaultDir);
@@ -391,24 +412,33 @@ export default function ObsidianApp() {
           setAppReady(true);
           return;
         }
+        // Vault exists but is empty — keep it active so new notes save.
+        setState((prev) => ({ ...prev, activeVaultId }));
+        setAppReady(true);
+        return;
       }
 
       // 2) Returning user who chose "docs" → re-seed sample notes.
       if (workspaceConfigured === "docs") {
+        const vid = ensureGuestVault();
         setState((prev) => ({
           ...prev,
           notes: SAMPLE_NOTES,
           folders: SAMPLE_FOLDERS,
           activeNoteId: SAMPLE_NOTES[0].id,
           openNoteIds: [SAMPLE_NOTES[0].id, SAMPLE_NOTES[1]?.id, SAMPLE_NOTES[2]?.id].filter(Boolean) as string[],
+          activeVaultId: vid,
         }));
         setAppReady(true);
         return;
       }
 
       // 3) Workspace was set to empty, or welcome was previously dismissed →
-      //    leave the blank state from the initializer in place.
+      //    leave the blank state from the initializer in place, but make sure
+      //    a vault exists so new notes get saved on refresh.
       if (workspaceConfigured === "empty" || welcomeDismissed) {
+        const vid = ensureGuestVault();
+        setState((prev) => ({ ...prev, activeVaultId: vid }));
         setAppReady(true);
         return;
       }
@@ -418,7 +448,7 @@ export default function ObsidianApp() {
     } catch {
       setAppReady(true);
     }
-  }, [loadWebVaultData]);
+  }, [loadWebVaultData, ensureGuestVault]);
 
   // Auto-collapse right panel on small desktop viewports
   useEffect(() => {
@@ -429,6 +459,7 @@ export default function ObsidianApp() {
   }, [viewportWidth, isMobile, patch]);
 
   // Apply theme + persist
+  const themeLoadedRef = useRef(false);
   useEffect(() => {
     const theme = THEMES.find((t) => t.id === state.activeThemeId) ?? THEMES[0];
     applyTheme(theme);
@@ -437,7 +468,10 @@ export default function ObsidianApp() {
       const bgColor = theme.vars["--obs-bg"] ?? "#1e1e2e";
       windowClient.setBackgroundColor(bgColor);
     }
-    // Save to localStorage
+    // Save to localStorage — but only after the load effect has had a chance
+    // to hydrate from storage. Otherwise the default "voltex-dark" overwrites
+    // a previously saved theme on first render.
+    if (!themeLoadedRef.current) return;
     try { localStorage.setItem("voltex-theme", state.activeThemeId); } catch { /* ignore */ }
   }, [state.activeThemeId]);
 
@@ -451,12 +485,19 @@ export default function ObsidianApp() {
     }
   }, [state.activeNoteId, state.notes]);
 
-  // Load saved theme from localStorage on mount
+  // Load saved theme + preferences from localStorage on mount (guest persistence)
   useEffect(() => {
     try {
       const saved = localStorage.getItem("voltex-theme");
       if (saved && THEMES.find((t) => t.id === saved)) {
         patch({ activeThemeId: saved });
+      }
+      const prefsRaw = localStorage.getItem("voltex-preferences");
+      if (prefsRaw) {
+        try {
+          const parsed = JSON.parse(prefsRaw) as Partial<EditorPreferences>;
+          patch({ preferences: { ...DEFAULT_PREFERENCES, ...parsed } });
+        } catch { /* ignore corrupt prefs */ }
       }
       const petEnabledRaw = localStorage.getItem("voltex-pet-enabled");
       const petType = localStorage.getItem("voltex-pet-type");
@@ -465,7 +506,21 @@ export default function ObsidianApp() {
       if (petType) petPatch.petType = petType as AppState["petType"];
       if (Object.keys(petPatch).length) patch(petPatch);
     } catch { /* ignore */ }
+    // Mark theme as loaded so the persist effect can begin writing.
+    themeLoadedRef.current = true;
   }, [patch]);
+
+  // Persist editor preferences whenever they change (after first load).
+  const prefsLoadedRef = useRef(false);
+  useEffect(() => {
+    if (!prefsLoadedRef.current) {
+      prefsLoadedRef.current = true;
+      return;
+    }
+    try {
+      localStorage.setItem("voltex-preferences", JSON.stringify(state.preferences));
+    } catch { /* ignore */ }
+  }, [state.preferences]);
 
   // Persist pet settings whenever they change.
   useEffect(() => {
@@ -1708,8 +1763,12 @@ export default function ObsidianApp() {
   return (
     <div
       ref={mainRef}
-      className="obsidian-app-root flex flex-col h-screen overflow-hidden"
-      style={{ background: "var(--color-obsidian-bg)" }}
+      className="obsidian-app-root workbench-shell flex flex-col h-screen overflow-hidden"
+      style={{
+        background: "var(--color-obsidian-bg)",
+        backgroundImage:
+          "radial-gradient(1200px 600px at 8% -10%, color-mix(in srgb, var(--color-obsidian-accent) 14%, transparent), transparent 60%), radial-gradient(900px 500px at 110% 110%, color-mix(in srgb, var(--color-obsidian-accent) 8%, transparent), transparent 55%)",
+      }}
     >
       {/* Auto-updater banner */}
       {updateReady && (
@@ -1776,15 +1835,19 @@ export default function ObsidianApp() {
       />
 
       {/* Main 3-column layout (desktop) / single column (mobile) */}
-      <div className="flex flex-1 overflow-hidden">
+      <div className={`flex flex-1 overflow-hidden ${isMobile ? "" : "px-2.5 pb-2.5 pt-1 gap-2.5"}`}>
         {/* Desktop Sidebar */}
         {!isMobile && !state.sidebarCollapsed && (
           <div
-            className="shrink-0 hide-mobile"
+            className="shrink-0 hide-mobile workbench-pane"
             style={{
               width: isSmallDesktop ? 220 : 264,
-              borderRight: "1px solid var(--color-obsidian-border)",
-              overflow: "visible",
+              background: "var(--color-obsidian-surface)",
+              border: "1px solid var(--color-obsidian-border)",
+              borderRadius: 14,
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 30px -12px rgba(0,0,0,0.55), 0 2px 6px -2px rgba(0,0,0,0.35)",
+              overflow: "hidden",
               position: "relative",
               zIndex: 20,
             }}
@@ -1826,7 +1889,20 @@ export default function ObsidianApp() {
         )}
 
         {/* Center — editor or graph */}
-        <div ref={editorAreaRef} className="flex-1 overflow-hidden relative" style={{ paddingBottom: isMobile ? 80 : 0, minWidth: isMobile ? undefined : 400 }}>
+        <div
+          ref={editorAreaRef}
+          className="flex-1 overflow-hidden relative workbench-stage"
+          style={{
+            paddingBottom: isMobile ? 80 : 0,
+            minWidth: isMobile ? undefined : 400,
+            background: isMobile ? undefined : "var(--color-obsidian-bg)",
+            border: isMobile ? undefined : "1px solid var(--color-obsidian-border)",
+            borderRadius: isMobile ? 0 : 14,
+            boxShadow: isMobile
+              ? undefined
+              : "0 1px 0 rgba(255,255,255,0.04) inset, 0 18px 50px -20px rgba(0,0,0,0.6), 0 4px 14px -4px rgba(0,0,0,0.4)",
+          }}
+        >
           {state.mainView === "editor" ? (
             <Editor
               state={state}
@@ -1901,8 +1977,15 @@ export default function ObsidianApp() {
         {/* Desktop Right panel */}
         {!isMobile && state.rightPanelOpen && (
           <div
-            className="shrink-0 overflow-hidden hide-mobile"
-            style={{ width: isSmallDesktop ? 200 : 240 }}
+            className="shrink-0 overflow-hidden hide-mobile workbench-pane"
+            style={{
+              width: isSmallDesktop ? 200 : 240,
+              background: "var(--color-obsidian-surface)",
+              border: "1px solid var(--color-obsidian-border)",
+              borderRadius: 14,
+              boxShadow:
+                "0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 30px -12px rgba(0,0,0,0.55), 0 2px 6px -2px rgba(0,0,0,0.35)",
+            }}
           >
             <RightPanel
               state={state}
@@ -2166,6 +2249,7 @@ export default function ObsidianApp() {
               })();
             }
             setWorkspaceSetupOpen(false);
+            const guestVid = ensureGuestVault();
             if (choice === "empty") {
               const blankNote: Note = {
                 id: `note-${Date.now()}`,
@@ -2185,6 +2269,7 @@ export default function ObsidianApp() {
                 folders: [{ id: "root", name: "Vault", parentId: null }],
                 activeNoteId: blankNote.id,
                 openNoteIds: [blankNote.id],
+                activeVaultId: guestVid,
               }));
             } else {
               // Seed sample/onboarding notes (only on explicit "docs" choice).
@@ -2194,6 +2279,7 @@ export default function ObsidianApp() {
                 folders: SAMPLE_FOLDERS,
                 activeNoteId: SAMPLE_NOTES[0].id,
                 openNoteIds: [SAMPLE_NOTES[0].id, SAMPLE_NOTES[1].id, SAMPLE_NOTES[2].id].filter(Boolean),
+                activeVaultId: guestVid,
               }));
             }
             setAppReady(true);

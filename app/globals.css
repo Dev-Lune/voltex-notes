@@ -116,6 +116,30 @@
 }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+   Code Highlighting (highlight.js — Voltex palette)
+   These rules are global so they paint on first render without waiting for a
+   JS-injected <style> tag. !important beats the parent <pre> color.
+   ══════════════════════════════════════════════════════════════════════════════ */
+.hljs { color: var(--color-obsidian-code-text, #cdd6f4) !important; background: transparent !important; }
+.hljs-comment, .hljs-quote { color: #6c7086 !important; font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-section, .hljs-link { color: #cba6f7 !important; }
+.hljs-built_in, .hljs-type, .hljs-class .hljs-title, .hljs-title.class_ { color: #f9e2af !important; }
+.hljs-string, .hljs-meta-string, .hljs-regexp, .hljs-template-string { color: #a6e3a1 !important; }
+.hljs-number, .hljs-symbol, .hljs-bullet { color: #fab387 !important; }
+.hljs-variable, .hljs-template-variable, .hljs-attr, .hljs-attribute { color: #f5c2e7 !important; }
+.hljs-function .hljs-title, .hljs-title.function_ { color: #89b4fa !important; }
+.hljs-name, .hljs-selector-id, .hljs-selector-class { color: #89dceb !important; }
+.hljs-tag { color: #74c7ec !important; }
+.hljs-meta, .hljs-meta-keyword { color: #94e2d5 !important; }
+.hljs-deletion { background: rgba(243,139,168,0.18); color: #f38ba8 !important; }
+.hljs-addition { background: rgba(166,227,161,0.16); color: #a6e3a1 !important; }
+.hljs-emphasis { font-style: italic; }
+.hljs-strong { font-weight: 600; }
+.hljs-params { color: #f5c2e7 !important; }
+.hljs-property { color: #89b4fa !important; }
+.hljs-operator, .hljs-punctuation { color: var(--color-obsidian-muted-text, #9399b2) !important; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
    Base Layer
    ══════════════════════════════════════════════════════════════════════════════ */
 @layer base {
@@ -169,6 +193,20 @@
   }
   ::-webkit-scrollbar-thumb:hover {
     background: var(--obs-muted);
+  }
+
+  /* Hidden scrollbars for horizontal toolbars / tab strips
+     (visible scrollbar at top-right of the editor was the toolbar/tab overflow) */
+  .editor-toolbar-row,
+  .editor-tab-strip {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .editor-toolbar-row::-webkit-scrollbar,
+  .editor-tab-strip::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
   }
 
   /* Selection */
