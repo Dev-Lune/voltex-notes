@@ -416,6 +416,9 @@ function CodeBlock({ code, lang }: { code: string; lang?: string }) {
 // ─── Mermaid Diagram Renderer ──────────────────────────────────────────────────
 
 function MermaidDiagram({ code }: { code: string }) {
+  const [svg, setSvg] = useState<string>("");
+  const [error, setError] = useState<string>("");
+  const containerId = useRef(`mermaid-${Math.random().toString(36).slice(2, 11)}`);
 
   useEffect(() => {
     const renderMermaid = async () => {
