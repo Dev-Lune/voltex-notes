@@ -4,6 +4,30 @@ All notable changes to Voltex Notes are documented here.
 
 ---
 
+## [2.0.0] — 2026-04-18
+
+### Added
+- **Companion system** — added a new `Settings > Companion` tab with pet enable/disable controls and selectable companions.
+- **Pet companion demo** — added a live companion showcase section to the landing page.
+- **More themes** — added five additional vault themes and expanded appearance customization.
+- **Mobile desktop hint** — added a dismissible mobile prompt that points users to the desktop build for the full workspace experience.
+
+### Fixed
+- **Version history reliability** — improved note snapshot/version handling so local history is preserved more consistently.
+- **Workspace preference sync** — account workspace choice now correctly overrides stale local defaults and persists back to cloud settings.
+- **Vault access visibility** — vault access is now always visible in the explorer header, including empty-state flows.
+- **Explorer consistency** — fixed inconsistent file and folder row sizing, spacing, icon alignment, and indentation inside the sidebar tree.
+- **Vault picker accessibility** — improved menu semantics, keyboard escape handling, labels, and focus states for vault switching.
+- **Sync prompt UX** — replaced the old floating prompt with a centered modal dialog for clearer sync decisions after vault open/sign-in.
+- **Theme list duplication** — removed duplicate theme IDs that caused React key collisions in Settings.
+
+### Changed
+- **Explorer redesign** — refreshed the sidebar, explorer header, and vault menus with clearer affordances and cleaner hierarchy.
+- **Editor polish** — refined the editor tab bar and toolbar sizing, spacing, hover states, and focus treatment.
+- **Release metadata** — bumped desktop/web release metadata to `2.0.0` for publishing.
+
+---
+
 ## [1.3.0] — 2026-04-08
 
 ### Added

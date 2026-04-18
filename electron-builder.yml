@@ -80,18 +80,24 @@ publish:
 
 releaseInfo:
   releaseNotes: |
-    ## What's New in v1.3.0
+    ## What's New in v2.0.0
 
-    ### Canvas Fixes
-    - Canvas notes now render as the visual canvas instead of raw JSON/code in editor mode
-    - Fixed anchor/node interaction for attaching cards
-    - Fixed color picker responsiveness and theme-aware canvas overlay styling
+    ### Companion + Personalization
+    - Added a new Companion settings tab with pet selection and enable/disable controls
+    - Added five more themes and improved appearance customization
+    - Added a live pet companion demo to the landing page
 
-    ### Data Reset Improvements
-    - Added `Delete all data` under `Settings > Account`
-    - Reset now clears local notes, synced cloud data, current vault state, and recent vault entries
-    - No more phantom `Untitled` note after wiping data
+    ### Explorer + Editor Refresh
+    - Redesigned the explorer/sidebar for cleaner spacing, alignment, and hierarchy
+    - Fixed inconsistent folder/file sizes and indentation in the note tree
+    - Polished editor tabs and toolbar interactions
 
-    ### Vault UX
-    - Restored recent vault selection in the Explorer vault picker
-    - Improved empty-vault state after reset and reopen
+    ### Vault + Sync UX
+    - Vault access is now always visible in the explorer header
+    - Added better empty-state flows for opening or creating vaults
+    - Replaced the old sync toast with a centered sync decision dialog
+
+    ### Reliability Fixes
+    - Improved version history behavior
+    - Synced workspace choice now respects account preferences
+    - Removed duplicate theme IDs that caused Settings warnings

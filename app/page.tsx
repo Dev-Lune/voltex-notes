@@ -179,7 +179,7 @@ const DOWNLOADS: { label: string; icon: typeof Cpu; hint: string; href?: string;
   {
     label: "Windows",
     icon: Cpu,
-    hint: ".exe · v1.3.0",
+    hint: ".exe · v2.0.0",
     href: "https://github.com/Dev-Lune/voltex-notes/releases/latest",
   },
   {
@@ -729,7 +729,7 @@ export default function HomePage() {
             </div>
 
             <div className="lg:col-span-6">
-              <MonoLabel>desktop builds — v1.3.0</MonoLabel>
+              <MonoLabel>desktop builds — v2.0.0</MonoLabel>
               <ul className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 {DOWNLOADS.map((d) => {
                   const Inner = (
@@ -875,7 +875,7 @@ export default function HomePage() {
 
           <div className="md:col-span-1 md:text-right">
             <span className="font-mono text-[10px] uppercase tracking-[0.22em]" style={{ color: DIM }}>
-              v1.3.0
+              v2.0.0
             </span>
           </div>
         </div>
